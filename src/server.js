@@ -1,6 +1,6 @@
 'use strict';
 
-var app  = require('express')();
+var app = require('express')();
 var http = require('http').Server(app);
 var lib = require('./lib');
 var sqs = require('./lib/sqs');
@@ -16,15 +16,15 @@ mongoose.Promise = Promise;
 
 // Our configuration
 var env = process.env.NODE_ENV || 'development';
-const config = require('./config/' + env);
-const bind_port = config.port || 80;
-const bind_addr = config.ip || '0.0.0.0';
-const queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
+var config = require('./config/' + env);
+var bind_port = config.port || 80;
+var bind_addr = config.ip || '0.0.0.0';
+var queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
 
 // Process the shell command to exec
 var CuraTemplate = StringTemplateCompile(config.cura_command);
 
-const workingDir = path.normalize(`${__dirname}/../working`);
+var workingDir = path.normalize(`${__dirname}/../working`);
 s3.setWorkingDir(workingDir);
 
 // Our SQS queue processing
@@ -42,7 +42,7 @@ queue.setQueueLowPriority(queue_prefix + 'us-west-slicing-low-prio');
 var exec = require('child-process-promise').exec;
 
 // Each inbound SQS message must have these fields....
-const mustHave = [
+var mustHave = [
   'configUrl',
   'gcodeUrl',
   'handle',
@@ -84,10 +84,10 @@ mongoose.connect(config.mongo_uri, {safe: true})
     throw new Error('Unable to connect to MongoDB; connection error is ' + err.message);
   });
 
-const STATE_ERR   = 12;
-const SLICER_PRE  = 14;
-const SLICER_RUN  = 15;
-const SLICER_POST = 16;
+var STATE_ERR   = 12;
+var SLICER_PRE  = 14;
+var SLICER_RUN  = 15;
+var SLICER_POST = 16;
 
 // Update the printer status
 //   TBD
@@ -194,7 +194,7 @@ function sendPrintCommand(msg) {
           //
           //    socket.io-socket-id "|" sqs-queue-name
           //
-          let info = socket.socket.split('|');
+          var info = socket.socket.split('|');
           if (info.length !== 2) {
             logger.log(logger.INFO, function() {
               return `${msg.jobId}: Printer ${msg.serialNumber} has an invalid socket record, socket=${socket.socket}`;
@@ -204,7 +204,7 @@ function sendPrintCommand(msg) {
 
           // Success; send a printFile command to the printer via the status
           // server to which it is connected
-          let data = {
+          var data = {
             printer_command: 'printFile',
             socket_id: info[0],
             job_stl: msg.stlUrl,

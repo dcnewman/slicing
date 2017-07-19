@@ -13,7 +13,7 @@ var mkdirp = Promise.promisify(require('mkdirp'));
 
 // And promisified versions of the AWS SDK S3 routines.
 var env = process.env.NODE_ENV || 'development';
-const config = require('../config/' + env);
+var config = require('../config/' + env);
 var S3 = require('aws-s3-promisified')(config.s3);
 
 
@@ -33,7 +33,7 @@ exports.downloadObject = function(logid, bucket, key, file) {
   logger.log(logger.DEBUG, function() {
     return `${logid}: downloadObject() called with bucket = ${bucket}; key = ${key}; file = ${file}`;
   });
-  
+
   // Sanity check
   if (ld.isEmpty(bucket) || ld.isEmpty(key) || ld.isEmpty(file)) {
     logger.log(logger.WARNING, function() {
@@ -43,7 +43,7 @@ exports.downloadObject = function(logid, bucket, key, file) {
   }
 
   // Any directories to first ensure exist?
-  let p = path.parse(file);
+  var p = path.parse(file);
   if (ld.isEmpty(p.dir)) {
     // Nope... just download to the current working directory
     return aws.saveObjectToFile(bucket, key, file);
@@ -63,7 +63,7 @@ exports.uploadFile = function(logid, file, bucket, key) {
   logger.log(logger.DEBUG, function() {
     return `${logid}: uploadFile() called with file = ${file}; bucket = ${bucket}; key = ${key}`;
   });
-  
+
   // Sanity check
   if (ld.isEmpty(bucket) || ld.isEmpty(key) || ld.isEmpty(file)) {
     logger.log(logger.WARNING, function() {

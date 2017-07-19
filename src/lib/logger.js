@@ -50,7 +50,7 @@ if (env === 'production') {
   var region = config.aws_region || 'us-west-2';
   var ip = process.env.NODE_IP || IP.address();
   ip = ip.replace(/\./g, '-');
-  var config = {
+  var options = {
     levels: winston.config.syslog.levels,
     level: level,
     handleExceptions: true,
@@ -65,7 +65,7 @@ if (env === 'production') {
     logGroupName: server_name,
     logStreamName: function() {
         // Spread log streams across dates as the server stays up
-        let date = new Date().toISOString().split('T')[0];
+        var date = new Date().toISOString().split('T')[0];
         return server_name + '-' + ip + '-' + date + '-' +
           crypto.createHash('md5')
           .update(startTime)
@@ -78,7 +78,7 @@ if (env === 'production') {
     handleExceptions: true,
     exitOnError: false,
     emitErrs: false,
-    transports: [ new (WinstonCloudWatch)(config) ],
+    transports: [ new (WinstonCloudWatch)(options) ],
   });
 }
 else {
@@ -92,7 +92,7 @@ else {
     emitErrs: false,
     transports: [ new (winston.transports.Console)({timestamp: true}) ]
   });
-  
+
 /*
   var log_path = process.env.LOG_PATH || '/var/log';
   var server_name = config.server_name || 'status-server';
@@ -107,7 +107,7 @@ else {
       colorize: false
     });
 */
-  
+
 }
 
 // Log the message 'msg' if the logging level is <= 'level'
@@ -137,8 +137,6 @@ function log(level, msg) {
   case DEBUG:   logger.debug(msg); return;
   default:      logger.info(msg); return;
   }
-
-  return;
 }
 
 function logLevel(lvl) {

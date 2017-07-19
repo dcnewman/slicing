@@ -5,9 +5,9 @@ var logger = require('./lib/logger');
 var ld = require('lodash');
 var Promise = require('bluebird');
 
-const HIGH = 0;
-const LOW  = 1;
-const MAX_SQS_REQUEST = 10;
+var HIGH = 0;
+var LOW  = 1;
+var MAX_SQS_REQUEST = 10;
 
 var callback = null;
 var keepAlive = { };
@@ -109,7 +109,7 @@ exports.renewMessages = function() {
 
 // Check the SQS queue 'queue' for up to 'permitted' messages
 function checkQueue(queueIndex, permitted, askFor) {
-  
+
   // If askFor was not supplied, then default it to permitted
   if (askFor === undefined) {
     logger.log(logger.DEBUG, function() {

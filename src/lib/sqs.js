@@ -9,7 +9,7 @@ var ld = require('lodash');
 var env = process.env.NODE_ENV || 'development';
 var config = require('../config/' + env);
 
-const MAX_SQS_REQUEST = 10;
+var MAX_SQS_REQUEST = 10;
 
 // Create an SQS context
 var awsOptions = (!ld.isEmpty(config.sqs) && !ld.isEmpty(config.sqs.awsOptions)) ? config.sqs.awsOptions : { }
@@ -44,7 +44,7 @@ exports.deleteMessage = function(queue, handle, cb) {
 
 exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
 
-  if (askFor <= 0 || ld.isEmpty(queue) || cb == undefined) {
+  if (askFor <= 0 || ld.isEmpty(queue) || cb === undefined) {
     return Promise.resolve(askFor);
   }
 

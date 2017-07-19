@@ -36,7 +36,7 @@ exports.parseUrl = function(msg, key) {
     throw new Error('parseUrl called with invalid arguments');
   }
 
-  let keyUrl = key + 'Url';
+  var keyUrl = key + 'Url';
   if (!(keyUrl in msg)) {
     logger.log(logger.WARNING, function() {
       return 'parseUrl called: msg argument lacks the key ' + keyUrl;
@@ -44,8 +44,8 @@ exports.parseUrl = function(msg, key) {
     throw new Error(`parseUrl called with msg object lacking the property ${keyUrl}`);
   }
 
-  let u = URL.parse(msg[keyUrl], false);
-  let p = path.parse(u.pathname);
+  var u = URL.parse(msg[keyUrl], false);
+  var p = path.parse(u.pathname);
 
   // Figure out the bucket name
   msg[key + 'Bucket'] = p.dir.split('/')[1];
@@ -95,8 +95,8 @@ exports.removeFiles = function(logid, files) {
   //  Let's make some an array of promises and then return a single promise which
   //  is tied to all of them
 
-  let promises = [ ];
-  for (let i = 0; i < files.length; i++) {
+  var i, promises = [ ];
+  for (i = 0; i < files.length; i++) {
     promises.push(unlink(files[i]));
   }
 
