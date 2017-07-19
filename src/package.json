@@ -1,0 +1,27 @@
+{
+  "name": "slicing",
+  "version": "1.0.0",
+  "description": "Cloud slicing service",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-s3-promisified": "^2.0.0",
+    "aws-sdk": "^2.40.0",
+    "bluebird": "^3.5.0",
+    "child-process-promise": "^2.2.1",
+    "express": "^4.15.2",
+    "ip": "^1.1.5",
+    "lodash": "^4.17.4",
+    "mkdirp": "^0.5.1",
+    "mongoose": "^4.9.3",
+    "shortid": "^2.2.8",
+    "string-template": "^1.0.0",
+    "winston": "^2.3.1",
+    "winston-cloudwatch": "^1.9.0"
+  }
+}
