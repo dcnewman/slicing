@@ -55,11 +55,16 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
       WaitTimeSeconds: config.sqs.ReceiveMessageWaitTimeSeconds[queueIndex],
       MaxNumberOfMessages: askFor < MAX_SQS_REQUEST ? askFor : MAX_SQS_REQUEST
     };
-    sqs.receiveMessage(params, function(err, messages) {
+    sqs.receiveMessage(params, function(err, results) {
 
       if (err) {
         return reject(err);
       }
+      else if (!results) {
+        return resolve(askFor);
+      }
+
+      var messages = results.Messages;
 
       // Return now if we received no messages
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -70,6 +75,7 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
       var i, used = 0;
       for (i = 0; i < messages.length; i++) {
         var data;
+        console.log(messages[i]);
         try {
           data = JSON.parse(messages[i].Body);
         }
@@ -77,11 +83,9 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
           // Skip this one
           continue;
         }
-        cb(null, {
+        cb(null, ld.assign({
           handle: messages[i].ReceiptHandle,
-          queueIndex: queueIndex,
-          data: data  // ???? TROUBLE ????
-        });
+          queueIndex: queueIndex}, data));
         used += 1;
       }
 

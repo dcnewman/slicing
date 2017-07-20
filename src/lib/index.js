@@ -5,9 +5,14 @@ var path = require('path');
 var ld = require('lodash');
 var Promise = require('bluebird');
 var logger = require('./logger');
+var rs = require('random-strings');
 
 // A 'promisified' fs.unlink()
 var unlink = Promise.promisify(require('fs').unlink);
+
+function unique() {
+  return rs.alphaNumMixed(20);
+}
 
 // Parse a S3 URL into
 //
@@ -27,7 +32,7 @@ var unlink = Promise.promisify(require('fs').unlink);
 //   2. msg[key + 'Key']
 //   3. msg[key + 'File']
 
-exports.parseUrl = function(msg, key) {
+exports.parseUrl = function(msg, workingDir, key) {
 
   if (ld.isEmpty(msg) || ld.isEmpty(key)) {
     logger.log(logger.WARNING, function() {
@@ -88,7 +93,9 @@ exports.removeFiles = function(logid, files) {
 
   // Single file?  Simple case again
   if (files.length === 1) {
-    return unlink(files[0]);
+    return unlink(files[0])
+      .then(function() { return Promise.resolve(); })
+      .catch(function() { return Promise.resolve(); });
   }
 
   // Okay, we have multiple files
@@ -100,5 +107,7 @@ exports.removeFiles = function(logid, files) {
     promises.push(unlink(files[i]));
   }
 
-  return Promise.all(promises);
+  return Promise.all(promises)
+    .then(function() { return Promise.resolve(); })
+    .catch(function() { return Promise.resolve(); });
 };

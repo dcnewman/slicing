@@ -41,11 +41,17 @@ exports.requeueMessage = function(msg) {
 };
 
 exports.removeMessage = function(msg) {
-  if (ld.isEmpty(msg) || ld.isEmpty(msg.handle)) return;
+  console.log('**** qrm 1');
+  if (ld.isEmpty(msg) || ld.isEmpty(msg.handle)) {console.log('**** qrm1 return'); return; }
+  console.log('**** qrm 2');
   var queueIndex = keepAlive[msg.handle];
+  console.log('**** qrm 3');
   delete keepAlive[msg.handle];
-  if (queue === undefined) return;
+  console.log('**** qrm 4');
+  if (queueIndex === undefined) { console.log('**** qrm4 return'); return; }
+  console.log('**** qrm 5');
   sqs.deleteMessage(queues[queueIndex], msg.handle, function(err, data) {
+    console.log('**** qrm 6');
     if (err) {
       logger.log(logger.WARNING, function() {
         return `${msg.jobId}: Error removing ${msg.handle} from the SQS queue ${queues[msg.queueIndex]}; err = ${err.message}`;
@@ -151,6 +157,10 @@ function checkQueue(queueIndex, permitted, askFor) {
 
 // Check the low priority queue for at most 'permitted' messages if disallowLow is not true
 function checkQueueLow(permitted, disallowLow) {
+
+  if (disallowLow === undefined) {
+    disallowLow = false;
+  }
 
   logger.log(logger.DEBUG, function() {
     return `checkQueueLow: permitted = ${permitted}; disallowLow = ${disallowLow}; successiveHigh = ${successiveHigh}; maxSuccessiveHigh = ${maxSuccessiveHigh}`;

@@ -46,11 +46,13 @@ exports.downloadObject = function(logid, bucket, key, file) {
   var p = path.parse(file);
   if (ld.isEmpty(p.dir)) {
     // Nope... just download to the current working directory
-    return aws.saveObjectToFile(bucket, key, file);
+    return S3.saveObjectToFile(bucket, key, file);
   }
 
   // First ensure that the directory exists, then download
-  return mkdirp(p.dir).then(aws.saveObjectToFile(bucket, key, file));
+  return mkdirp(p.dir).then(function() {
+    return S3.saveObjectToFile(bucket, key, file);
+  });
 };
 
 
@@ -73,7 +75,7 @@ exports.uploadFile = function(logid, file, bucket, key) {
   }
 
   // Upload the file
-  return aws.putFile(bucket, key, file);
+  return S3.putFile(bucket, key, file);
 };
 
 exports.setWorkingDir = function(dir) {

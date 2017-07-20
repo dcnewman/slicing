@@ -14,6 +14,8 @@ var Promise = require('bluebird');
 var mongoose = require('mongoose');
 mongoose.Promise = Promise;
 
+var PrinterSocket = require('./db_models/printerSocket.model');
+
 // Our configuration
 var env = process.env.NODE_ENV || 'development';
 var config = require('./config/' + env);
@@ -79,6 +81,7 @@ mongoose.connect(config.mongo_uri, {safe: true})
     logger.log(logger.NOTICE, 'MongoDB connection established');
     // Begin checking the queues
     queue.checkQueues();
+    return null;
   })
   .catch(function(err) {
     logger.log(logger.CRITICAL, 'MongoDB connection error: ' + err.message);
@@ -95,7 +98,7 @@ var SLICER_POST = 16;
 function updateState(msg, state, err) {
 
   var txt;
-  switch (stat) {
+  switch (state) {
   case STATE_ERR:   txt = `error; ${err}`; break;
   case SLICER_PRE:  txt = 'preparing slicer'; break;
   case SLICER_RUN:  txt = 'slicing'; break;
@@ -125,7 +128,7 @@ function downloadFiles(msg) {
       });
 
       // Now download the STL and slicer configuration files
-      return Promise.Join(s3.downloadObject(msg.jobId, msg.stlBucket, msg.stlKey, msg.stlFile),
+      return Promise.join(s3.downloadObject(msg.jobId, msg.stlBucket, msg.stlKey, msg.stlFile),
                           s3.downloadObject(msg.jobId, msg.configBucket, msg.configKey, msg.configFile))
         .then(function() {
 
@@ -144,7 +147,7 @@ function downloadFiles(msg) {
 function uploadFile(msg) {
 
   logger.log(logger.DEBUG, function() {
-    return `${msg.jobId}: Uploading from local ${msg.gcodeFile} to S3 ${msg.gcodekey}`;
+    return `${msg.jobId}: Uploading from local ${msg.gcodeFile} to S3 ${msg.gcodeKey}`;
   });
 
   return s3.uploadFile(msg.jobId, msg.gcodeFile, msg.gcodeBucket, msg.gcodeKey)
@@ -171,13 +174,18 @@ function cleanFiles(msg) {
 function sendPrintCommand(msg) {
 
   // Find the printer's current socket via Mongo db
+  console.log('***** spc 1');
   return updateState(msg, SLICER_POST)
     .then(function() {
+      console.log('***** spc 2');
 
       logger.log(logger.DEBUG, function() {
         return `${msg.jobId}: Retrieving printer socket for ${msg.serialNumber}`;
       });
 
+      console.log('***** spc 3');
+      return Promise.resolve(msg);
+      /*
       return PrinterSocket.find(
         { serial_number: msg.serialNumber, delete_flag: false },
         { socket: 1, last_modified: 1 }).sort('-last_modified').limit(1).exec()
@@ -239,6 +247,7 @@ function sendPrintCommand(msg) {
           });
           return Promise.reject(err);
         });
+        */
     });
 }
 
@@ -260,7 +269,9 @@ function notifyDone(msg) {
   });
 
   // Do not continue to renew visibility
+  console.log('***** 1');
   queue.removeMessage(msg);
+  console.log('***** 2');
 
   switch (msg.requestType) {
 
@@ -310,7 +321,7 @@ function spawnSlicer(msg) {
     });
 }
 
-function processMessage(msg) {
+function processMessage(err, msg) {
 
   msg = ld.cloneDeep(msg);
 
@@ -342,7 +353,7 @@ function processMessage(msg) {
   var i;
   for (i = 0; i < mustHave.length; i++) {
 
-    if (!ld.isEmpty(msg[mustHave[i]])) {
+    if (mustHave[i] in msg) {
       continue;
     }
 
@@ -353,7 +364,7 @@ function processMessage(msg) {
     });
 
     // Reject
-    return updateState(msg, STATE_ERR, `Programming error; slicing request is missing the required paramter ${mustHave[i]}`)
+    return updateState(msg, STATE_ERR, `Programming error; slicing request is missing the required parameter ${mustHave[i]}`)
       .then(sqs.requeueMessage)
       .catch(function(err) {
         logger.log(logger.WARNING, function() {
@@ -369,17 +380,17 @@ function processMessage(msg) {
   //    Local temporary file names
 
   try {
-    lib.parseUrl(workingDir, msg, 'stl');
-    lib.parseUrl(workingDir, msg, 'config');
-    lib.parseUrl(workingDir, msg, 'gcode');
+    lib.parseUrl(msg, workingDir, 'stl');
+    lib.parseUrl(msg, workingDir, 'config');
+    lib.parseUrl(msg, workingDir, 'gcode');
   }
   catch (e) {
     // Reject
-    return updateState(msg, STATE_ERR, `Programming error; invalid data; cannot parse URL; err = ${err.message}`)
+    return updateState(msg, STATE_ERR, `Programming error; invalid data; cannot parse URL; err = ${e.message}`)
       .then(sqs.requeueMessage)
-      .catch(function(err) {
+      .catch(function(e2) {
         logger.log(logger.WARNING, function() {
-          return `${msg.jobId}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
+          return `${msg.jobId}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${e2.message}`;
         });
         return null;
       });
@@ -392,7 +403,7 @@ function processMessage(msg) {
   //   until that hour is up.  That means a user left wondering when their
   //   file will be sliced....  So, instead we only keep it invisible for
   //   a minute at a time and extend the invisibility every 30 seconds or so.
-  queue.trackMessage(queue, msg.handle);
+  queue.trackMessage(msg);
 
   // At this point, consider us as having just added +1 to the count of
   // running processes notifyDone will decrement the count
@@ -417,12 +428,11 @@ function processMessage(msg) {
     .then(spawnSlicer)
     .then(uploadFile)
     .then(notifyDone)
-    .then(sqs.deleteMessage)
     .then(cleanFiles)
     .catch(function(err) {
       // This status update call will log the error
       updateState(msg, STATE_ERR, `Processing error; err = ${err.message}`);
-      sqs.requeueMessage(msg);
+      queue.requeueMessage(msg);
       lib.removeFiles(msg.jobId, [msg.stlFile, msg.configFile, msg.gcodeFile]);
       return null;
     });
