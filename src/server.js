@@ -21,11 +21,12 @@ var bind_port = config.port || 80;
 var bind_addr = config.ip || '0.0.0.0';
 var queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
 
-// Process the shell command to exec
-var CuraTemplate = StringTemplateCompile(config.cura_command);
-
 var workingDir = path.normalize(`${__dirname}/../working`);
 s3.setWorkingDir(workingDir);
+
+// Process the shell command to exec
+var scriptDir = path.normalize(`${__dirname}/../scripts`);
+var CuraTemplate = StringTemplateCompile(`${scriptDir}/${config.cura_command}`);
 
 // Our SQS queue processing
 var queue = require('./queue');
