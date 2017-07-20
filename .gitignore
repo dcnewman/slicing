@@ -1,4 +1,6 @@
 src/config/*.js
+working
+working/**
 .db
 .tmp
 .sass-cache
