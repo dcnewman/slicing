@@ -15,6 +15,7 @@ var mongoose = require('mongoose');
 mongoose.Promise = Promise;
 
 var PrinterSocket = require('./db_models/printerSocket.model');
+var PrintJob = require('./db_models/printJob.model');
 
 // Our configuration
 var env = process.env.NODE_ENV || 'development';
@@ -23,8 +24,8 @@ var bind_port = config.port || 80;
 var bind_addr = config.ip || '0.0.0.0';
 var queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
 
-var workingDir = path.normalize(`${__dirname}/../working`);
-s3.setWorkingDir(workingDir);
+var workDir = path.normalize(`${__dirname}/../working`);
+s3.setWorkDir(workDir);
 
 // Process the shell command to exec
 var scriptDir = path.normalize(`${__dirname}/../scripts`);
@@ -46,13 +47,15 @@ var exec = require('child-process-promise').exec;
 
 // Each inbound SQS message must have these fields....
 var mustHave = [
-  'configUrl',
-  'gcodeUrl',
+  'config_file',
+  'gcode_file',
   'handle',
-  'jobId',
-  'requestType',
-  'serialNumber',
-  'stlUrl'
+  'job_id',
+  'job_id_int',
+  'request_type',
+  'serial_number',
+  'socket_id',
+  'stl_file'
 ];
 
 // Logging test
@@ -76,7 +79,7 @@ if (env === 'development') {
 /**
  *  Connect to MongoDB
  */
-mongoose.connect(config.mongo_uri, {safe: true})
+mongoose.connect(config.mongo.uri, {safe: true})
   .then(function() {
     logger.log(logger.NOTICE, 'MongoDB connection established');
     // Begin checking the queues
@@ -88,6 +91,7 @@ mongoose.connect(config.mongo_uri, {safe: true})
     throw new Error('Unable to connect to MongoDB; connection error is ' + err.message);
   });
 
+var STATE_CLEAR = -1;
 var STATE_ERR   = 12;
 var SLICER_PRE  = 14;
 var SLICER_RUN  = 15;
@@ -97,26 +101,88 @@ var SLICER_POST = 16;
 //   TBD
 function updateState(msg, state, err) {
 
-  var txt;
-  switch (state) {
-  case STATE_ERR:   txt = `error; ${err}`; break;
-  case SLICER_PRE:  txt = 'preparing slicer'; break;
-  case SLICER_RUN:  txt = 'slicing'; break;
-  case SLICER_POST: txt = 'slicing completed'; break;
-  default: txt = '???'; break;
+  var detail, txt, op;
+
+  if (state !== STATE_CLEAR) {
+
+    switch (state) {
+      case STATE_ERR:
+        txt = 'Error';
+        detail = `Error; ${err.message}`;
+        break;
+
+      case SLICER_PRE:
+        txt = 'Preparing Slicer';
+        detail = 'Preparing to slice the model; downloading the STL file and slicing options';
+        break;
+
+      case SLICER_RUN:
+        txt = 'Slicing';
+        detail = 'Slicing the model';
+        break;
+
+      case SLICER_POST:
+        txt = 'Slicing Completed';
+        detail = 'Slicing completed; uploading the instructions for retrieval by the printer';
+        break;
+
+      default:
+        logger.log(logger.WARNING, function () {
+          return `${msg.job_id}: unknown state sent to updateState; state = ${state}`;
+        });
+        state = STATE_ERR;
+        txt = 'Unknown';
+        detail = 'Unknown state';
+        break;
+    }
+    op = {
+      $set: {
+        slicing: {
+          status: state,
+          jobID: msg.job_id,
+          progress: txt,
+          progressDetail: detail
+        }
+      }
+    };
+  }
+  else {
+
+    // Clear the slicing info
+    op = {
+      $unset: {
+        slicing: ''
+      }
+    };
   }
 
   logger.log(logger.DEBUG, function() {
-    return `${msg.jobId}: Changing state to "${txt}"`;
+    return `${msg.job_id}: Changing state to "${txt}"`;
   });
 
-  return Promise.resolve(msg);
+  return Promise.join(
+    PrinterSocket.update({socket: msg.socket_id}, op),
+    PrintJob.update({job_id: msg.job_id_int}, op),
+    function (r1, r2) {
+    })
+    .then(function() {
+      logger.log(logger.DEBUG, function() {
+        return `${msg.job_id}: Updated socket ${msg.socket_id} and print job ${msg.job_id_int} with new state`;
+      });
+      return Promise.resolve(msg);
+    })
+    .catch(function(err) {
+      logger.log(logger.WARNING, function() {
+        return `${msg.job_id}: Unable to update the printer socket or print job record; err = ${err.message}`;
+      });
+      return Promise.resolve(msg);
+    })
 }
 
 
-// downloadFiles() -- Download the STL and slicer config from S3
-//   -- Update the current state to "preparing slicer" (14) and then
-//   -- Download the STL and slicer configuration files
+// downloadFiles()
+//  - Update the current state to "preparing slicer" (14), and then
+//  - Return a promise to download the STL and slicer configuration files
 function downloadFiles(msg) {
 
   // Set state to "preparing slicer"
@@ -124,16 +190,16 @@ function downloadFiles(msg) {
     .then(function() {
 
       logger.log(logger.DEBUG, function() {
-        return `${msg.jobId}: Downloading from S3 ${msg.stlKey} to local ${msg.stlFile}; ${msg.configKey} to ${msg.configFile}`;
+        return `${msg.job_id}: Downloading from S3 ${msg.stl_key} to local ${msg.stl_local}; ${msg.config_key} to ${msg.config_local}`;
       });
 
       // Now download the STL and slicer configuration files
-      return Promise.join(s3.downloadObject(msg.jobId, msg.stlBucket, msg.stlKey, msg.stlFile),
-                          s3.downloadObject(msg.jobId, msg.configBucket, msg.configKey, msg.configFile))
+      return Promise.join(s3.downloadObject(msg.job_id, msg.stl_bucket, msg.stl_key, msg.stl_local),
+                          s3.downloadObject(msg.job_id, msg.config_bucket, msg.config_key, msg.config_local))
         .then(function() {
 
           logger.log(logger.DEBUG, function() {
-            return `${msg.jobId}: Finished downloading ${msg.stlKey} to ${msg.stlFile}`;
+            return `${msg.job_id}: Finished downloading ${msg.stl_key} to ${msg.stl_local}`;
           });
 
           // And resolve this promise
@@ -144,13 +210,14 @@ function downloadFiles(msg) {
 
 
 // Upload the gcode file
+// - Return a promise to upload the gcode file to S3
 function uploadFile(msg) {
 
   logger.log(logger.DEBUG, function() {
-    return `${msg.jobId}: Uploading from local ${msg.gcodeFile} to S3 ${msg.gcodeKey}`;
+    return `${msg.job_id}: Uploading from local ${msg.gcode_local} to S3 ${msg.gcode_key}`;
   });
 
-  return s3.uploadFile(msg.jobId, msg.gcodeFile, msg.gcodeBucket, msg.gcodeKey)
+  return s3.uploadFile(msg.job_id, msg.gcode_local, msg.gcode_bucket, msg.gcode_key)
     .then(function() {
       return Promise.resolve(msg);
     });
@@ -161,10 +228,10 @@ function uploadFile(msg) {
 function cleanFiles(msg) {
 
   logger.log(logger.DEBUG, function() {
-    return `${msg.jobId}: Removing local files ${msg.stlFile}, ${msg.configFile}, ${msg.gcodeFile}`;
+    return `${msg.job_id}: Removing local files ${msg.stl_local}, ${msg.config_local}, ${msg.gcode_local}`;
   });
 
-  return lib.removeFiles(msg.jobId, [msg.stlFile, msg.configFile, msg.gcodeFile])
+  return lib.removeFiles(msg.job_id, [msg.stl_local, msg.config_local, msg.gcode_local])
     .then(function() {
       return Promise.resolve(msg);
     });
@@ -174,27 +241,23 @@ function cleanFiles(msg) {
 function sendPrintCommand(msg) {
 
   // Find the printer's current socket via Mongo db
-  console.log('***** spc 1');
   return updateState(msg, SLICER_POST)
-    .then(function() {
-      console.log('***** spc 2');
+    .then(function () {
 
-      logger.log(logger.DEBUG, function() {
-        return `${msg.jobId}: Retrieving printer socket for ${msg.serialNumber}`;
+      logger.log(logger.DEBUG, function () {
+        return `${msg.job_id}: Retrieving printer socket for ${msg.serial_number}; socket = ${msg.socket_id}`;
       });
 
-      console.log('***** spc 3');
-      return Promise.resolve(msg);
-      /*
+      // See the latest rev of the socket
       return PrinterSocket.find(
-        { serial_number: msg.serialNumber, delete_flag: false },
-        { socket: 1, last_modified: 1 }).sort('-last_modified').limit(1).exec()
-        .then(function(socket) {
+        {serial_number: msg.serial_number, delete_flag: false},
+        {socket: 1, last_modified: 1}).sort('-last_modified').limit(1).lean().exec()
+        .then(function (socket) {
 
           // Does the printer have any active printer sockets?
           if (ld.isEmpty(socket)) {
-            logger.log(logger.INFO, function() {
-              return `${msg.jobId}: Printer ${msg.serialNumber} no longer has an active socket`;
+            logger.log(logger.INFO, function () {
+              return `${msg.job_id}: Printer ${msg.serial_number} no longer has an active socket`;
             });
             return Promise.reject(new Error('Printer no longer connected to the cloud'));
           }
@@ -203,10 +266,11 @@ function sendPrintCommand(msg) {
           //
           //    socket.io-socket-id "|" sqs-queue-name
           //
+          socket = socket[0];
           var info = socket.socket.split('|');
           if (info.length !== 2) {
-            logger.log(logger.INFO, function() {
-              return `${msg.jobId}: Printer ${msg.serialNumber} has an invalid socket record, socket=${socket.socket}`;
+            logger.log(logger.INFO, function () {
+              return `${msg.job_id}: Printer ${msg.serial_number} has an invalid socket record, socket=${socket.socket}`;
             });
             return Promise.reject(new Error('Printer has invalid socket record; cannot send gcode to printer'));
           }
@@ -216,41 +280,60 @@ function sendPrintCommand(msg) {
           var data = {
             printer_command: 'printFile',
             socket_id: info[0],
-            job_stl: msg.stlUrl,
-            config_file: msg.configUrl,
-            gcode_file: msg.gcodeUrl,
-            job_id: msg.jobId,
+            job_stl: msg.stl_file,
+            config_file: msg.config_file,
+            gcode_file: msg.gcode_file,
+            job_id: msg.job_id,
             request_dt_tm: new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '')
           };
 
-          logger.log(logger.DEBUG, function() {
-            return `${msg.jobId}: Sending SQS request to ${queue_prefix}${info[1]}; data = ${JSON.stringify(data)}`;
+          logger.log(logger.DEBUG, function () {
+            return `${msg.job_id}: Sending SQS request to ${queue_prefix}${info[1]}; data = ${JSON.stringify(data)}`;
           });
 
-          return new Promise(function(resolve, reject) {
-            sqs.sendMessage(queue_prefix + info[1], data, function(err, data) {
-              if (err) {
-                logger.log(logger.WARNING, function() {
-                  return `${msg.jobId}: Error creating print request via SQS; err = ${err.message}`;
-                });
-                return reject(err);
-              }
-              else {
-                return resolve(msg);
-              }
+          return sqs.sendMessage(queue_prefix + info[1], data)
+            .then(function() {
+
+            })
+            .catch(function (err) {
+              logger.log(logger.WARNING, function () {
+                return `${msg.job_id}: Error creating print request via SQS; err = ${err.message}`;
+              });
+              return Promise.reject(err);
             });
-          });
-        })
-        .catch(function(err) {
-          logger.log(logger.WARNING, function() {
-            return `${msg.jobId}: Database lookup error whilst looking for printer socket for ${msg.serialNumber}; err = ${err.message}`;
-          });
-          return Promise.reject(err);
         });
-        */
+    })
+    .catch(function (err) {
+      logger.log(logger.WARNING, function () {
+        return `${msg.job_id}: Database lookup error whilst looking for the latest printer socket for ${msg.serial_number}; err = ${err.message}`;
+      });
+      return Promise.reject(err);
     });
 }
 
+
+// Save the gcode file location in the print job.
+//   This is so that we don't reslice unless we need to
+function updatePrintJob(msg) {
+
+  // Should never happen
+  if (!msg) {
+    logger.log(logger.WARNING, 'updatePrintJob: bad call arguments; msg not supplied');
+    return Promise.reject(new Error('updatePrintJob() called with bad arguments'));
+  }
+
+  // Update the print job
+  return PrintJob.update({job_id: msg.job_id_int}, {$set: {gcode_file: msg.gcode_file}}).exec()
+    .then(function() {
+      return Promise.resolve(msg);
+    })
+    .catch(function(err) {
+      logger.log(logger.WARNING, function() {
+        return `${msg.job_id}: updatePrintJob(() cannot update print job with gcode file URL; err = ${err.message}`;
+      });
+      return Promise.reject(err);
+    });
+}
 
 // Notify our cloud services that the message has been processed; that the STL file has been sliced.
 function notifyDone(msg) {
@@ -265,15 +348,13 @@ function notifyDone(msg) {
   }
 
   logger.log(logger.DEBUG, function() {
-    return `${msg.jobId}: runningProcesses going from ${running+1} to ${running}; msg = ${JSON.stringify(msg)}`;
+    return `${msg.job_id}: runningProcesses going from ${running+1} to ${running}; msg = ${JSON.stringify(msg)}`;
   });
 
   // Do not continue to renew visibility
-  console.log('***** 1');
   queue.removeMessage(msg);
-  console.log('***** 2');
 
-  switch (msg.requestType) {
+  switch (msg.request_type) {
 
   case 0:
     // Use SQS to send a print command to the status server to which
@@ -287,34 +368,30 @@ function notifyDone(msg) {
 
   default:
     logger.log(logger.WARNING, function() {
-      return `${msg.jobId}: notifyDone() processing message with invalid requestType of ${msg.requestType}; punting`;
+      return `${msg.job_id}: notifyDone() processing message with invalid request type of ${msg.request_type}; punting`;
     });
-    return Promise.reject(new Error(`Invalid requestType ${msg.requestType} passed to notifyDone`));
+    return Promise.reject(new Error(`Invalid request type ${msg.request_type} passed to notifyDone`));
   }
 }
 
 // Spawn the slicer
 function spawnSlicer(msg) {
-
-  logger.log(logger.DEBUG, function() {
-    return `${msg.jobId}: Changing state to "slicing"`;
-  });
-
   return updateState(msg, SLICER_RUN)
     .then(function() {
+      console.log('msg.config_local =', msg.config_local);
       var obj = {
-        configFile: msg.configFile,
-        stlFile: msg.stlFile,
-        gcodeFile: msg.gcodeFile
+        config: msg.config_local,
+        stl: msg.stl_local,
+        gcode: msg.gcode_local
       };
       var cmd = CuraTemplate(obj);
       logger.log(logger.DEBUG, function() {
-        return `${msg.jobId}: Starting slicer; ${cmd}`;
+        return `${msg.job_id}: Starting slicer; ${cmd}`;
       });
       return exec(cmd)
         .then(function(res) {
           logger.log(logger.DEBUG, function() {
-            return `${msg.jobId}: Slicer finished; stdout = "${res.stdout}"`;
+            return `${msg.job_id}: Slicer finished; stdout = "${res.stdout}"`;
           });
           return Promise.resolve(msg);
         });
@@ -330,12 +407,12 @@ function processMessage(err, msg) {
   });
 
   // Ensure that the request type is valid
-  if (msg.requestType !== 0 && msg.requestType !== 1) {
+  if (msg.request_type !== 0 && msg.request_type !== 1) {
 
     // Bad message...
     logger.log(logger.WARNING, function() {
-      return 'processMessage: received message has an invalid requestType of ' +
-        msg.requestType + '; msg = ' + JSON.stringify(msg);
+      return 'processMessage: received message has an invalid request_type of ' +
+        msg.request_type + '; msg = ' + JSON.stringify(msg);
     });
 
     // This status update call will log the error
@@ -343,7 +420,7 @@ function processMessage(err, msg) {
       .then(sqs.requeueMessage)
       .catch(function(err) {
         logger.log(logger.WARNING, function() {
-          return `${msg.jobId}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
+          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
         });
         return null;
       });
@@ -368,7 +445,7 @@ function processMessage(err, msg) {
       .then(sqs.requeueMessage)
       .catch(function(err) {
         logger.log(logger.WARNING, function() {
-          return `${msg.jobId}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
+          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
         });
         return null;
       });
@@ -380,9 +457,9 @@ function processMessage(err, msg) {
   //    Local temporary file names
 
   try {
-    lib.parseUrl(msg, workingDir, 'stl');
-    lib.parseUrl(msg, workingDir, 'config');
-    lib.parseUrl(msg, workingDir, 'gcode');
+    lib.parseUrl(msg, workDir, 'stl');
+    lib.parseUrl(msg, workDir, 'config');
+    lib.parseUrl(msg, workDir, 'gcode');
   }
   catch (e) {
     // Reject
@@ -390,7 +467,7 @@ function processMessage(err, msg) {
       .then(sqs.requeueMessage)
       .catch(function(e2) {
         logger.log(logger.WARNING, function() {
-          return `${msg.jobId}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${e2.message}`;
+          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${e2.message}`;
         });
         return null;
       });
@@ -418,22 +495,24 @@ function processMessage(err, msg) {
   //   3. Update status in db to 'slicing'
   //   4. Slice the print
   //   5. Upload the resulting gcode to S3
-  //   6. Update status in db to 'slicing finished'
-  //   7. Notify the cloud that the slice is now available (e.g., tell the
+  //   6. Remove the local files we downloaded or generated
+  //   7. Update the print job with the gcode file info (so we don't reslice if we don't need to)
+  //   8. Update status in db to 'slicing finished'
+  //   9. Notify the cloud that the slice is now available (e.g., tell the
   //        printer to consume it)
-  //   8. Remove the local files we downloaded or generated
-  //   9. Return
+  //  10. Return
 
   return downloadFiles(msg)
     .then(spawnSlicer)
     .then(uploadFile)
-    .then(notifyDone)
     .then(cleanFiles)
+    .then(updatePrintJob)
+    .then(notifyDone)
     .catch(function(err) {
       // This status update call will log the error
       updateState(msg, STATE_ERR, `Processing error; err = ${err.message}`);
       queue.requeueMessage(msg);
-      lib.removeFiles(msg.jobId, [msg.stlFile, msg.configFile, msg.gcodeFile]);
+      lib.removeFiles(msg.job_id, [msg.stlFile, msg.configFile, msg.gcodeFile]);
       return null;
     });
 }
@@ -473,11 +552,11 @@ http.listen(bind_port, bind_addr, function () {
 An inbound SQS message is required to come in with the following
 fields:
 
-  jobId:         P3Dnnnnn-mmmmm
-  serialNumber:  Printer's serial number
-  stlUrl:        Full URL to the STL file to slice
-  configUrl:     Full URL to the slicing configuration to use
-  gcodeUrl:      Full URL for where to store the resulting gcode
+  job_id:         P3Dnnnnn-mmmmm
+  serial_number:  Printer's serial number
+  stl_file:        Full URL to the STL file to slice
+  config_file:     Full URL to the slicing configuration to use
+  gcode_file:      Full URL for where to store the resulting gcode
 
 We add to this the following fields
 

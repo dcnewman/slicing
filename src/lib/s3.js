@@ -5,7 +5,7 @@ var ld = require('lodash');
 
 // For teasing a directory path out of an absolute file path
 var path = require('path');
-var workingDir = './';
+var workDir = './';
 
 // We wish to have a promisified version of mkdirp()
 var Promise = require('bluebird');
@@ -78,12 +78,12 @@ exports.uploadFile = function(logid, file, bucket, key) {
   return S3.putFile(bucket, key, file);
 };
 
-exports.setWorkingDir = function(dir) {
-  workingDir = dir;
-  mkdirp(workingDir)
+exports.setWorkDir = function(dir) {
+  workDir = dir;
+  mkdirp(workDir)
     .then(function() { return null; })
     .catch(function(err) {
-      logger.log(logger.CRITICAL, `Unable to create working directory, ${workingDir}; ${err.message}`);
-      throw new Error(`Unable to create working directory, ${workingDir}; ${err.message}`);
+      logger.log(logger.CRITICAL, `Unable to create work directory, ${workDir}; ${err.message}`);
+      throw new Error(`Unable to create working directory, ${workDir}; ${err.message}`);
     });
 };

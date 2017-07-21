@@ -25,12 +25,12 @@ function unique() {
 // it assumes https://s3-host/bucket-name/.  It does not support
 // https://bucket-name.s3-host/.
 //
-// The S3 URL is msg[key + 'Url'].  The parsed pieces are then
+// The S3 URL is msg[key + '_file'].  The parsed pieces are then
 // returned as
 //
-//   1. msg[key + 'Bucket']
-//   2. msg[key + 'Key']
-//   3. msg[key + 'File']
+//   1. msg[key + '_bucket']
+//   2. msg[key + '_key']
+//   3. msg[key + '_local']
 
 exports.parseUrl = function(msg, workingDir, key) {
 
@@ -41,7 +41,7 @@ exports.parseUrl = function(msg, workingDir, key) {
     throw new Error('parseUrl called with invalid arguments');
   }
 
-  var keyUrl = key + 'Url';
+  var keyUrl = key + '_file';
   if (!(keyUrl in msg)) {
     logger.log(logger.WARNING, function() {
       return 'parseUrl called: msg argument lacks the key ' + keyUrl;
@@ -53,14 +53,14 @@ exports.parseUrl = function(msg, workingDir, key) {
   var p = path.parse(u.pathname);
 
   // Figure out the bucket name
-  msg[key + 'Bucket'] = p.dir.split('/')[1];
+  msg[key + '_bucket'] = p.dir.split('/')[1];
 
   // And produce the bucket key
   p.dir = p.dir.split('/').splice(2).join('/');
-  msg[key + 'Key'] = path.format(p);
+  msg[key + '_key'] = path.format(p);
 
   // And the file name on our local storage
-  msg[key + 'File'] = `${workingDir}/${unique()}-${p.base}`;
+  msg[key + '_local'] = `${workingDir}/${unique()}-${p.base}`;
 }
 
 

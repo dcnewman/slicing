@@ -5,17 +5,21 @@ var logger = require('./lib/logger');
 var ld = require('lodash');
 var Promise = require('bluebird');
 
+// Our configuration
+var env = process.env.NODE_ENV || 'development';
+var config = require('./config/' + env);
+
+// Our two queues
 var HIGH = 0;
 var LOW  = 1;
-var MAX_SQS_REQUEST = 10;
 
 var callback = null;
 var keepAlive = { };
-var queues = [null, null];
-var maxConcurrentProcesses = 10;
+var queues = [null, null];  // [HIGH, LOW]
+var maxConcurrentProcesses = config.processes.max_concurrent;
+var maxSuccessiveHigh = config.processes.max_successive_high;
 var runningProcesses = 0;
 var successiveHigh = 0;
-var maxSuccessiveHigh = 5;
 
 exports.setCallback = function(cb) {
   callback = cb;
@@ -36,28 +40,27 @@ exports.trackMessage = function(msg) {
 };
 
 exports.requeueMessage = function(msg) {
-  if (ld.isEmpty(msg) || ld.isEmpty(msg.handle)) return;
-  delete keepAlive[msg.handle];
+  runningProcessesInc(-1);
+  if (!ld.isEmpty(msg) && !ld.isEmpty(msg.handle)) {
+    delete keepAlive[msg.handle];
+  }
 };
 
 exports.removeMessage = function(msg) {
-  console.log('**** qrm 1');
-  if (ld.isEmpty(msg) || ld.isEmpty(msg.handle)) {console.log('**** qrm1 return'); return; }
-  console.log('**** qrm 2');
-  var queueIndex = keepAlive[msg.handle];
-  console.log('**** qrm 3');
-  delete keepAlive[msg.handle];
-  console.log('**** qrm 4');
-  if (queueIndex === undefined) { console.log('**** qrm4 return'); return; }
-  console.log('**** qrm 5');
-  sqs.deleteMessage(queues[queueIndex], msg.handle, function(err, data) {
-    console.log('**** qrm 6');
-    if (err) {
-      logger.log(logger.WARNING, function() {
-        return `${msg.jobId}: Error removing ${msg.handle} from the SQS queue ${queues[msg.queueIndex]}; err = ${err.message}`;
+  if (!ld.isEmpty(msg) && !ld.isEmpty(msg.handle)) {
+    var queueIndex = keepAlive[msg.handle];
+    delete keepAlive[msg.handle];
+    if (queueIndex !== undefined) {
+      // eslint-disable-next-line no-unused-vars
+      sqs.deleteMessage(queues[queueIndex], msg.handle, function (err, data) {
+        if (err) {
+          logger.log(logger.WARNING, function () {
+            return `${msg.jobId}: Error removing ${msg.handle} from the SQS queue ${queues[msg.queueIndex]}; err = ${err.message}`;
+          });
+        }
       });
     }
-  });
+  }
 };
 
 // Extend the visibility of each message we have received but
@@ -78,7 +81,9 @@ exports.renewMessages = function() {
     return;
   }
 
-  logger.log(logger.DEBUG, function() { return `renewMessages: ${keys.length} messages to renew`; });
+  logger.log(logger.DEBUG, function() {
+    return `renewMessages: ${keys.length} messages to renew`;
+  });
 
   // Build the entries which the AWS SDK SQS library will wish to see
   var entries = [[], []];
@@ -94,6 +99,7 @@ exports.renewMessages = function() {
 
   // Now send the list to SQS
   if (entries[HIGH].length > 0) {
+    // eslint-disable-next-line no-unused-vars
     sqs.updateVisibility(queues[HIGH], entries[HIGH], function(err, data) {
       if (err) {
         logger.log(logger.WARNING, `SQS error from sqs.updateVisibility for queue ${queues[HIGH]}; ${err.message}`);
@@ -102,6 +108,7 @@ exports.renewMessages = function() {
   }
 
   if (entries[LOW].length > 0) {
+    // eslint-disable-next-line no-unused-vars
     sqs.updateVisibility(queues[LOW], entries[LOW], function(err, data) {
       if (err) {
         logger.log(logger.WARNING, `SQS error from sqs.updateVisibility for queue ${queues[LOW]}; ${err.message}`);
@@ -145,7 +152,7 @@ function checkQueue(queueIndex, permitted, askFor) {
   }
 
   // Now reduce askFor if it exceeds the maximum for a single SQS request
-  askFor = askFor <= MAX_SQS_REQUEST ? askFor : MAX_SQS_REQUEST;
+  askFor = (askFor <= config.sqs.max_requests) ? askFor : config.sqs.max_requests;
 
   // Now try to get some messages from the queue
   logger.log(logger.DEBUG, function() {
@@ -204,7 +211,7 @@ function checkQueueHigh(permitted) {
 }
 
 function checkQueuesDelay() {
-  setTimeout(checkQueues, 1000);
+  setTimeout(checkQueues, 500);
 }
 
 function checkQueues() {
@@ -224,7 +231,10 @@ function checkQueues() {
   // Allow a ratio of N high priority processes to M low priority
   var permitted = maxConcurrentProcesses - runningProcesses;
 
-  // Check for high priority jobs
+  // 1. Check for low priority only if we've let plenty of high priority jobs recently
+  // 2. Check for high priority jobs
+  // 3. Check for low priority jobs if there are still job slots
+  // 4. Pause briefly regardless of whether we've had an error or not
   return checkQueueLow(permitted, true)
     .then(checkQueueHigh)
     .then(checkQueueLow)
@@ -232,10 +242,13 @@ function checkQueues() {
     .catch(checkQueuesDelay);
 }
 
-exports.runningProcessesInc = function(val) {
+function runningProcessesInc(val) {
   runningProcesses += val;
-  if (runningProcesses < 0) runningProcesses = 0;
+  if (runningProcesses < 0) {
+    runningProcesses = 0;
+  }
   return runningProcesses;
 };
 
 exports.checkQueues = checkQueues;
+exports.runningProcessesInc = runningProcessesInc;

@@ -56,6 +56,13 @@ var PrinterSocketSchemaJSON = {
     maxlength: 15
   },
 
+  slicing: {
+    status: Number,
+    jobID: String,
+    progress: String,
+    progressDetail: String
+  },
+
   data: {
 
     status: {
@@ -115,7 +122,7 @@ var PrinterSocketSchemaJSON = {
 
     jobID: {
       type: String,
-      maxlength: 32
+      maxlength: 64
     },
 
     file: {

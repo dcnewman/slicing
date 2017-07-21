@@ -17,7 +17,7 @@ var PrinterSocketSchemaJSON = require('../schemas/printerSocket.schema');
 var PrinterSocketSchema = new Schema(PrinterSocketSchemaJSON,
                                      { collection: 'printer_sockets' });
 
-PrinterSocketSchema.set({ autoIndex: config.mongo_auto_index });
+PrinterSocketSchema.set({ autoIndex: config.mongo.auto_index });
 
 PrinterSocketSchema.index({ socket: 1 });
 PrinterSocketSchema.index({ delete_flag: 1, last_modified: 1, 'data.status': 1});

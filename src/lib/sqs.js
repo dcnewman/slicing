@@ -9,8 +9,6 @@ var ld = require('lodash');
 var env = process.env.NODE_ENV || 'development';
 var config = require('../config/' + env);
 
-var MAX_SQS_REQUEST = 10;
-
 // Create an SQS context
 var awsOptions = (!ld.isEmpty(config.sqs) && !ld.isEmpty(config.sqs.awsOptions)) ? config.sqs.awsOptions : { }
 var sqs;
@@ -42,6 +40,21 @@ exports.deleteMessage = function(queue, handle, cb) {
   }, cb);
 };
 
+exports.sendMessage = function(queue, data, cb) {
+  return new Promise(function(resolve, reject) {
+    sqs.sendMessage({
+      QueueUrl: queue,
+      MessageBody: JSON.stringify(data),
+      DelaySeconds: 0
+    }, function(err, data) {
+      if (err) {
+        return reject(err);
+      }
+      return resolve(0);
+    })
+  });
+};
+
 exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
 
   if (askFor <= 0 || ld.isEmpty(queue) || cb === undefined) {
@@ -53,7 +66,7 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
     var params = {
       QueueUrl: queue,
       WaitTimeSeconds: config.sqs.ReceiveMessageWaitTimeSeconds[queueIndex],
-      MaxNumberOfMessages: askFor < MAX_SQS_REQUEST ? askFor : MAX_SQS_REQUEST
+      MaxNumberOfMessages: askFor < config.sqs.max_requests ? askFor : config.sqs.max_requests
     };
     sqs.receiveMessage(params, function(err, results) {
 
@@ -75,7 +88,6 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
       var i, used = 0;
       for (i = 0; i < messages.length; i++) {
         var data;
-        console.log(messages[i]);
         try {
           data = JSON.parse(messages[i].Body);
         }
