@@ -58,6 +58,7 @@ exports.requeueMessage = function(msg) {
 };
 
 exports.removeMessage = function(msg) {
+  runningProcessesInc(-1);
   if (!ld.isEmpty(msg) && !ld.isEmpty(msg.handle)) {
     var queueIndex = keepAlive[msg.handle];
     delete keepAlive[msg.handle];
