@@ -54,10 +54,8 @@ var mustHave = [
   'gcode_file',
   'handle',
   'job_id',
-  'job_id_int',
+  'job_oid',
   'request_type',
-  'serial_number',
-  'socket_id',
   'stl_file'
 ];
 
@@ -174,11 +172,19 @@ function updateState(msg, state, err) {
     return `${msg.job_id}: Changing state to "${txt}"; ${JSON.stringify(op)}`;
   });
 
-  return PrintJob.update({job_id: msg.job_id_int}, op).exec()
-    .then(function() {
-      logger.log(logger.DEBUG, function() {
-        return `${msg.job_id}: Updated print job ${msg.job_id_int} with new state`;
-      });
+  return PrintJob.update({_id: msg.job_oid}, op).exec()
+    .then(function(result) {
+      logger.log(logger.INFO, `**** results = ${JSON.stringify(result)}`);
+      if (result && result.nMatched === 0) {
+        logger.log(logger.INFO, function() {
+          return `${msg.job_id}: Print job ${msg.job_oid} no longer exists; likely removed from the queue`;
+        });
+      }
+      else {
+        logger.log(logger.DEBUG, function() {
+          return `${msg.job_id}: Updated print job ${msg.job_oid} with new state`;
+        });
+      }
       return Promise.resolve(msg);
     })
     .catch(function(err) {
@@ -334,6 +340,8 @@ function processMessage(err, msg) {
       });
   }
 
+  msg.job_oid = mongoose.Types.ObjectId(msg.job_oid);
+
   // Stop now if the message is missing required fields
   var i;
   for (i = 0; i < mustHave.length; i++) {
@@ -475,7 +483,6 @@ An inbound SQS message is required to come in with the following
 fields:
 
   job_id:         P3Dnnnnn-mmmmm
-  serial_number:  Printer's serial number
   stl_file:        Full URL to the STL file to slice
   config_file:     Full URL to the slicing configuration to use
   gcode_file:      Full URL for where to store the resulting gcode
