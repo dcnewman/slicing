@@ -39,6 +39,7 @@ queue.setQueueLowPriority(queue_prefix + 'us-west-slicing-low-prio');
 // Stats
 var jobsSucceeded = 0;
 var jobsFailed = 0;
+var jobsCanceled = 0;
 
 // To spawn a slicer process, we use exec()
 //   spawn -- forks a child process with no shell and streams
@@ -174,11 +175,11 @@ function updateState(msg, state, err) {
 
   return PrintJob.update({_id: msg.job_oid}, op).exec()
     .then(function(result) {
-      logger.log(logger.INFO, `**** results = ${JSON.stringify(result)}`);
-      if (result && result.nMatched === 0) {
+      if (result && result.n === 0) {
         logger.log(logger.INFO, function() {
           return `${msg.job_id}: Print job ${msg.job_oid} no longer exists; likely removed from the queue`;
         });
+        return Promise.reject(new Error('CANCELED'));
       }
       else {
         logger.log(logger.DEBUG, function() {
@@ -188,6 +189,11 @@ function updateState(msg, state, err) {
       return Promise.resolve(msg);
     })
     .catch(function(err) {
+      if (err.message === 'CANCELED') {
+        // Bump upstairs
+        return Promise.reject(err);
+      }
+      // Don't let the inability to update deter us (may be problem if SLICER_DONE state)
       logger.log(logger.WARNING, function() {
         return `${msg.job_id}: Unable to update the print job record; err = ${err.message}`;
       });
@@ -295,13 +301,6 @@ function notifyDone(msg) {
 
   return updateState(msg, SLICER_DONE)
     .then(function() {
-
-      // Decrement the count of runningProcesses
-      var running = queue.runningProcessesInc(-1);
-
-      logger.log(logger.DEBUG, function () {
-        return `${msg.job_id}: runningProcesses going from ${running + 1} to ${running}; msg = ${JSON.stringify(msg)}`;
-      });
 
       // Do not continue to renew visibility
       queue.removeMessage(msg);
@@ -425,15 +424,35 @@ function processMessage(err, msg) {
       return null;
     })
     .catch(function(err) {
-      // This status update call will log the error
-      jobsFailed += 1;
-      queue.requeueMessage(msg);
-      updateState(msg, STATE_ERR, `Processing error; err = ${err.message}`)
-        .then(function() { return null; })
-        .catch(function() { return null; });
+      var requeue;
+      if (err.message === 'CANCELED') {
+        // Job was removed from the queue...
+        logger.log(logger.INFO, function () {
+          return `${msg.job_id}: Slicing canceled; job appears to have been canceled`;
+        });
+        requeue = false;
+        jobsCanceled += 1;
+      }
+      else {
+        requeue = true;
+        jobsFailed += 1;
+        updateState(msg, STATE_ERR, `Processing error; err = ${err.message}`)
+          .then(function () { return null; })
+          .catch(function () { return null; });
+      }
+
+      // Clean up temporary files
       lib.removeFiles(msg.job_id, [msg.stlFile, msg.configFile, msg.gcodeFile])
         .then(function() { return null; })
         .catch(function() { return null; });
+
+      // Must be after removeFiles()
+      if (requeue) {
+        queue.requeueMessage(msg);
+      }
+      else {
+        queue.removeMessage(msg);
+      }
       return null;
     });
 }
@@ -449,9 +468,10 @@ app.get('/stats', function(req, res) {
   return res.status(200).json(ld.merge(
     {
       jobsSucceeded: jobsSucceeded,
-      jobsFailed: jobsFailed
+      jobsFailed: jobsFailed,
+      jobsCanceled: jobsCanceled
     },
-    queue.stats()))
+    queue.stats()));
 });
 
 http.listen(bind_port, bind_addr, function () {
