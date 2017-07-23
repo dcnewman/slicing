@@ -46,7 +46,7 @@ var logger;
 if (env === 'production') {
 
   // Log to AWS CloudWatch
-  var server_name = config.server_name || 'status-server';
+  var server_name = config.server_name || 'slicing-server';
   var region = config.aws_region || 'us-west-2';
   var ip = process.env.NODE_IP || IP.address();
   ip = ip.replace(/\./g, '-');
