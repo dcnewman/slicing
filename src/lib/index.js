@@ -93,6 +93,9 @@ exports.removeFiles = function(logid, files) {
 
   // Single file?  Simple case again
   if (files.length === 1) {
+    logger.log(logger.DEBUG, function() {
+      return `${logid}: Removing local file ${files[0]}`;
+    });
     return unlink(files[0])
       .then(function() { return Promise.resolve(); })
       .catch(function() { return Promise.resolve(); });
@@ -104,6 +107,9 @@ exports.removeFiles = function(logid, files) {
 
   var i, promises = [ ];
   for (i = 0; i < files.length; i++) {
+    logger.log(logger.DEBUG, function() {
+      return `${logid}: Removing local file ${files[i]}`;
+    });
     promises.push(unlink(files[i]));
   }
 

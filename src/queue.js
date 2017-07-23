@@ -21,6 +21,17 @@ var maxSuccessiveHigh = config.processes.max_successive_high;
 var runningProcesses = 0;
 var successiveHigh = 0;
 
+exports.stats = function() {
+  return {
+    runningProcesses: runningProcesses,
+    successiveHigh: successiveHigh,
+    keepAlive: keepAlive,
+    queues: queues,
+    maxConcurrentProcesses: maxConcurrentProcesses,
+    maxSuccessiveHigh: maxSuccessiveHigh,
+  };
+};
+
 exports.setCallback = function(cb) {
   callback = cb;
 };
