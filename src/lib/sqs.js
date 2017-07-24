@@ -65,6 +65,7 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
 
     var params = {
       QueueUrl: queue,
+      VisibilityTimeout: config.sqs.VisibilityTimeout,
       WaitTimeSeconds: config.sqs.ReceiveMessageWaitTimeSeconds[queueIndex],
       MaxNumberOfMessages: askFor < config.sqs.max_requests ? askFor : config.sqs.max_requests
     };
