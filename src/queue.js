@@ -75,6 +75,10 @@ exports.removeMessage = function(msg) {
   }
 };
 
+function renewDelay() {
+  setTimeout(renewMessages, 30 * 1000);
+}
+
 // Extend the visibility of each message we have received but
 //   not yet finished processing.  Rather than default each
 //   message to an invisibility of, say, one hour, we instead
@@ -83,13 +87,14 @@ exports.removeMessage = function(msg) {
 //   we don't leave the message invisible in the queue for an hour.
 //   Instead it will become visible again in short order.
 
-exports.renewMessages = function() {
+function renewMessages() {
 
   // Get an array of the key names in keepAlive
   var keys = Object.keys(keepAlive);
   if (keys.length === 0) {
     // Nothing to do; nothing to renew
     logger.log(logger.DEBUG, 'renewMessages: no messages to renew in SQS');
+    renewDelay();
     return;
   }
 
@@ -129,8 +134,8 @@ exports.renewMessages = function() {
   }
 
   logger.log(logger.DEBUG, `renewMessages: ${keys.length} messages renewed`);
-};
-
+  renewDelay();
+}
 
 // Check the SQS queue 'queue' for up to 'permitted' messages
 function checkQueue(queueIndex, permitted, askFor) {
@@ -263,4 +268,5 @@ function runningProcessesInc(val) {
 };
 
 exports.checkQueues = checkQueues;
+exports.renewMessages = renewMessages;
 exports.runningProcessesInc = runningProcessesInc;
