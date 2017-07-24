@@ -1,11 +1,12 @@
 'use strict';
 
-var app = require('express')();
-var http = require('http').Server(app);
+var PrintJob = require('./db_models/printJob.model');
 var lib = require('./lib');
 var sqs = require('./lib/sqs');
 var logger = require('./lib/logger');
 var s3 = require('./lib/s3');
+var app = require('express')();
+var http = require('http').Server(app);
 var path = require('path');
 var ld = require('lodash');
 var StringTemplateCompile = require('string-template/compile');
@@ -14,32 +15,20 @@ var Promise = require('bluebird');
 var mongoose = require('mongoose');
 mongoose.Promise = Promise;
 
-var PrintJob = require('./db_models/printJob.model');
-
 // Our configuration
 var env = process.env.NODE_ENV || 'development';
 var config = require('./config/' + env);
 var bind_port = config.port || 80;
 var bind_addr = config.ip || '0.0.0.0';
-var queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
 
+// Directory for temp files
+//   Not using /tmp to avoid compromising swap
 var workDir = path.normalize(`${__dirname}/../working`);
 s3.setWorkDir(workDir);
 
-// Process the shell command to exec
+// Process the cura shell command
 var scriptDir = path.normalize(`${__dirname}/../scripts`);
 var CuraTemplate = StringTemplateCompile(`${scriptDir}/${config.cura_command}`);
-
-// Our SQS queue processing
-var queue = require('./queue');
-queue.setCallback(processMessage);
-queue.setQueueHighPriority(queue_prefix + 'us-west-slicing-high-prio');
-queue.setQueueLowPriority(queue_prefix + 'us-west-slicing-low-prio');
-
-// Stats
-var jobsSucceeded = 0;
-var jobsFailed = 0;
-var jobsCanceled = 0;
 
 // To spawn a slicer process, we use exec()
 //   spawn -- forks a child process with no shell and streams
@@ -49,15 +38,26 @@ var jobsCanceled = 0;
 //              data.
 var exec = require('child-process-promise').exec;
 
+// Our SQS queues
+var queue = require('./queue');
+queue.setCallback(processMessage);
+var queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
+queue.setQueueHighPriority(queue_prefix + 'us-west-slicing-high-prio');
+queue.setQueueLowPriority(queue_prefix + 'us-west-slicing-low-prio');
+
+// Stats
+var jobsSucceeded = 0;
+var jobsFailed = 0;
+var jobsCanceled = 0;
+
 // Each inbound SQS message must have these fields....
 var mustHave = [
-  'config_file',
-  'gcode_file',
-  'handle',
-  'job_id',
-  'job_oid',
-  'request_type',
-  'stl_file'
+  'config_file',  // Download URL for the Cura slicing config
+  'gcode_file',   // Upload URL for the resulting gcode
+  'handle',       // SQS message handle; needed to remove or requeue a SQS message
+  'job_id',       // For logging; <serial-number> + '-' + <job-id>
+  'job_oid',      // db _id for the print job document
+  'stl_file'      // Download URL for the model's STL to slice
 ];
 
 // Logging test
@@ -202,7 +202,6 @@ function updateState(msg, state, err) {
     })
 }
 
-
 // downloadFiles()
 //  - Update the current state to "preparing slicer" (14), and then
 //  - Return a promise to download the STL and slicer configuration files
@@ -230,7 +229,6 @@ function downloadFiles(msg) {
         });
     });
 }
-
 
 // Spawn the slicer
 function spawnSlicer(msg) {
@@ -284,18 +282,6 @@ function cleanFiles(msg) {
     });
 }
 
-// Save the gcode file location in the print job.
-//   This is so that we don't reslice unless we need to
-function updatePrintJob(msg) {
-
-  // Should never happen
-  if (!msg) {
-    logger.log(logger.WARNING, 'updatePrintJob: bad call arguments; msg not supplied');
-    return Promise.reject(new Error('updatePrintJob() called with bad arguments'));
-  }
-
-  return updateState(msg, SLICER_DONE);
-}
 
 // Notify our cloud services that the message has been processed; that the STL file has been sliced.
 function notifyDone(msg) {
@@ -305,6 +291,10 @@ function notifyDone(msg) {
 
       // Do not continue to renew visibility
       queue.removeMessage(msg);
+
+      logger.log(logger.INFO, function() {
+        return `${msg.job_id}: Sliced!`;
+      });
 
       // And move on
       return Promise.resolve(msg);
@@ -319,26 +309,6 @@ function processMessage(err, msg) {
   logger.log(logger.DEBUG, function() {
     return `processMessage: msg = ${JSON.stringify(msg)}`;
   });
-
-  // Ensure that the request type is valid
-  if (msg.request_type !== 0 && msg.request_type !== 1) {
-
-    // Bad message...
-    logger.log(logger.WARNING, function() {
-      return 'processMessage: received message has an invalid request_type of ' +
-        msg.request_type + '; msg = ' + JSON.stringify(msg);
-    });
-
-    // This status update call will log the error
-    return updateState(msg, STATE_ERR, 'Programming error; slicing request contains an invalid request type')
-      .then(sqs.requeueMessage)
-      .catch(function(err) {
-        logger.log(logger.WARNING, function() {
-          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
-        });
-        return null;
-      });
-  }
 
   msg.job_oid = mongoose.Types.ObjectId(msg.job_oid);
 
@@ -497,40 +467,3 @@ http.listen(bind_port, bind_addr, function () {
     logger.log(logger.NOTICE, 'Leaving uid and gid unchanged');
   }
 });
-
-/*
-
-An inbound SQS message is required to come in with the following
-fields:
-
-  job_id:         P3Dnnnnn-mmmmm
-  stl_file:        Full URL to the STL file to slice
-  config_file:     Full URL to the slicing configuration to use
-  gcode_file:      Full URL for where to store the resulting gcode
-
-We add to this the following fields
-
-  handle:        SQS message's receipt handle
-  queueIndex:    Queue index
-
-  stlBucket:     Parsed S3 bucket name for the STL file
-  stlKey:        Parsed S3 key name for the STL file
-  stlFile:       Local temporary file to store the STL file in
-
-  configBucket:  Parsed S3 bucket name for the slicing config
-  configKey:     Parsed S3 key name for the slicing config
-  configFile:    Local temporary file to store the config file in
-
-  gcodeBucket:   Parsed S3 bucket name for the gcode file
-  gcodeKey:      Parsed S3 key name for the gcode file
-  gcodeFile:     Local temporary file to receive the gcode file
-
-Once the STL is sliced, we dequeue this message and then send
-a message to the printer's current status server.  That is located
-by looking the printer's current printer_sockets document up in
-the database.  (Note that while waiting for slicing to finish,
-the printer may have disconnected and reconnected.  Upon reconnecting,
-it will have a new socket and possibly connect to a different
-status server.)
-
-*/
