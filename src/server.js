@@ -50,6 +50,7 @@ var jobsSucceeded = 0;
 var jobsFailed = 0;
 var jobsFailedSlicing = 0;
 var jobsCanceled = 0;
+var totalSlicingTime = 0.0;
 
 // Each inbound SQS message must have these fields....
 var mustHave = [
@@ -104,7 +105,6 @@ var STATE_FAIL     = -1;
 var STATE_ERR      = -2;
 
 // Update the printer status
-//   TBD
 function updateState(msg, state, err) {
 
   var detail, txt, op;
@@ -154,23 +154,21 @@ function updateState(msg, state, err) {
       detail = 'Unknown state';
       break;
   }
+
   op = {
     $set: {
       slicing: {
         status: state,
         jobID: msg.job_id,
         progress: txt,
-        progressDetail: detail
+        progressDetail: detail,
+        downloadTime: msg.download_time,
+        uploadTime: msg.upload_time,
+        slicingTime: msg.slicing_time
       },
-      gcode_file: 'waiting'
+      gcode_file: (state === STATE_DONE) ? msg.gcode_file : 'waiting'
     }
   };
-
-  if (state === STATE_DONE) {
-    // Save the gcode file location to the print job document
-    op.$set.gcode_file = msg.gcode_file;
-  }
-
 
   logger.log(logger.DEBUG, function() {
     return `${msg.job_id}: Changing state to "${txt}"; ${JSON.stringify(op)}`;
@@ -218,9 +216,13 @@ function downloadFiles(msg) {
       });
 
       // Now download the STL and slicer configuration files
+      msg.download_time[1] = new Date();
       return Promise.join(s3.downloadObject(msg.job_id, msg.stl_bucket, msg.stl_key, msg.stl_local),
                           s3.downloadObject(msg.job_id, msg.config_bucket, msg.config_key, msg.config_local))
         .then(function() {
+
+          msg.download_time[2] = new Date();
+          msg.download_time[0] = msg.download_time[2] - msg.download_time[1];
 
           logger.log(logger.DEBUG, function() {
             return `${msg.job_id}: Finished downloading ${msg.stl_key} to ${msg.stl_local}`;
@@ -246,8 +248,11 @@ function spawnSlicer(msg) {
       logger.log(logger.DEBUG, function() {
         return `${msg.job_id}: Starting slicer; ${cmd}`;
       });
+      msg.slice_time[1] = new Date();
       return exec(cmd)
         .then(function(res) {
+          msg.slice_time[2] = new Date();
+          msg.slice_time[0] = msg.slice_time[2] - msg.slice_time[1];
           logger.log(logger.DEBUG, function() {
             return `${msg.job_id}: Slicer finished; stdout = "${res.stdout}"`;
           });
@@ -273,13 +278,15 @@ function uploadFile(msg) {
         return `${msg.job_id}: Uploading from local ${msg.gcode_local} to S3 ${msg.gcode_key}`;
       });
 
+      msg.upload_time[1] = new Date();
       return s3.uploadFile(msg.job_id, msg.gcode_local, msg.gcode_bucket, msg.gcode_key)
         .then(function () {
+          msg.upload_time[2] = new Date();
+          msg.upload_time[0] = msg.upload_time[2] - msg.upload_time[1];
           return Promise.resolve(msg);
         });
     });
 }
-
 
 // Remove local files
 function cleanFiles(msg) {
@@ -289,7 +296,6 @@ function cleanFiles(msg) {
       return Promise.resolve(msg);
     });
 }
-
 
 // Notify our cloud services that the message has been processed; that the STL file has been sliced.
 function notifyDone(msg) {
@@ -309,7 +315,6 @@ function notifyDone(msg) {
     });
 }
 
-
 function processMessage(err, msg) {
 
   msg = ld.cloneDeep(msg);
@@ -319,6 +324,9 @@ function processMessage(err, msg) {
   });
 
   msg.job_oid = mongoose.Types.ObjectId(msg.job_oid);
+  msg.download_time = [0, 0, 0];
+  msg.upload_time = [0, 0, 0];
+  msg.slicing_time = [0, 0, 0];
 
   // Stop now if the message is missing required fields
   var i;
@@ -411,6 +419,7 @@ function processMessage(err, msg) {
         });
         requeue = false;
         jobsCanceled += 1;
+        totalSlicingTime = msg.slicing_time[0] / 1000.0;  // convert to seconds
         // Cannot readily update the job state -- it's in the completed_jobs collection
       }
       else if (err.message === 'SLICER') {
@@ -459,7 +468,8 @@ app.get('/stats', function(req, res) {
       jobsSucceeded: jobsSucceeded,
       jobsFailed: jobsFailed,
       jobsFailedSlicing: jobsFailedSlicing,
-      jobsCanceled: jobsCanceled
+      jobsCanceled: jobsCanceled,
+      totalSlicingTime: totalSlicingTime
     },
     queue.stats()));
 });
