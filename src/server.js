@@ -86,6 +86,7 @@ mongoose.connect(config.mongo.uri, {safe: true})
     logger.log(logger.NOTICE, 'MongoDB connection established');
     // Begin checking the queues
     queue.checkQueues();
+    queue.renewMessages();
     return null;
   })
   .catch(function(err) {
