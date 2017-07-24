@@ -248,11 +248,11 @@ function spawnSlicer(msg) {
       logger.log(logger.DEBUG, function() {
         return `${msg.job_id}: Starting slicer; ${cmd}`;
       });
-      msg.slice_time[1] = new Date();
+      msg.slicing_time[1] = new Date();
       return exec(cmd)
         .then(function(res) {
-          msg.slice_time[2] = new Date();
-          msg.slice_time[0] = msg.slice_time[2] - msg.slice_time[1];
+          msg.slicing_time[2] = new Date();
+          msg.slicing_time[0] = msg.slicing_time[2] - msg.slicing_time[1];
           logger.log(logger.DEBUG, function() {
             return `${msg.job_id}: Slicer finished; stdout = "${res.stdout}"`;
           });
