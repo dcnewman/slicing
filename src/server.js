@@ -48,6 +48,7 @@ queue.setQueueLowPriority(queue_prefix + 'us-west-slicing-low-prio');
 // Stats
 var jobsSucceeded = 0;
 var jobsFailed = 0;
+var jobsFailedSlicing = 0;
 var jobsCanceled = 0;
 
 // Each inbound SQS message must have these fields....
@@ -94,12 +95,13 @@ mongoose.connect(config.mongo.uri, {safe: true})
     throw new Error('Unable to connect to MongoDB; connection error is ' + err.message);
   });
 
-var STATE_CLEAR = -1;
-var STATE_ERR   = 12;
-var SLICER_PRE  = 114;
-var SLICER_RUN  = 115;
-var SLICER_POST = 116;
-var SLICER_DONE = 117;
+var SLICER_WAITING  =  0;
+var SLICER_PRE      =  1;
+var SLICER_RUN      =  2;
+var SLICER_POST     =  3;
+var SLICER_DONE     =  4;
+var SLICER_FAIL     = -1;
+var SLICER_ERR      = -2;
 
 // Update the printer status
 //   TBD
@@ -107,68 +109,68 @@ function updateState(msg, state, err) {
 
   var detail, txt, op;
 
-  if (state !== STATE_CLEAR) {
+  switch (state) {
+    case SLICER_WAITING:
+      txt = 'Waiting to Slice';
+      detail = 'Waiting in the slicing queue for the model to be sliced';
+      break;
 
-    switch (state) {
-      case STATE_ERR:
-        txt = 'Error';
-        detail = `Error; ${err.message}`;
-        break;
+    case STATE_FAIL:
+      txt = 'Cannot Slice';
+      detail = 'The model cannot be sliced; something is incorrect with the STL file';
+      break;
 
-      case SLICER_PRE:
-        txt = 'Preparing Slicer';
-        detail = 'Preparing to slice the model; downloading the STL file and slicing options';
-        break;
+    case STATE_ERR:
+      txt = 'Error';
+      detail = `Error; ${err.message}`;
+      break;
 
-      case SLICER_RUN:
-        txt = 'Slicing';
-        detail = 'Slicing the model';
-        break;
+    case SLICER_PRE:
+      txt = 'Preparing Slicer';
+      detail = 'Preparing to slice the model; downloading the STL file and slicing options';
+      break;
 
-      case SLICER_POST:
-        txt = 'Saving sliced model';
-        detail = 'Slicing completed; uploading the printing instructions for retrieval by the printer';
-        break;
+    case SLICER_RUN:
+      txt = 'Slicing';
+      detail = 'Slicing the model';
+      break;
 
-      case SLICER_DONE:
-        txt = 'Slicing completed';
-        detail = 'Slicing process finished; model is ready to print';
-        break;
+    case SLICER_POST:
+      txt = 'Saving sliced model';
+      detail = 'Slicing completed; uploading the printing instructions for retrieval by the printer';
+      break;
 
-      default:
-        logger.log(logger.WARNING, function () {
-          return `${msg.job_id}: unknown state sent to updateState; state = ${state}`;
-        });
-        state = STATE_ERR;
-        txt = 'Unknown';
-        detail = 'Unknown state';
-        break;
-    }
-    op = {
-      $set: {
-        slicing: {
-          status: state,
-          jobID: msg.job_id,
-          progress: txt,
-          progressDetail: detail
-        }
-      }
-    };
-    if (state === SLICER_DONE) {
-      // Save the gcode file location to the print job document
-      op.$set.gcode_file = msg.gcode_file;
-    }
+    case SLICER_DONE:
+      txt = 'Slicing completed';
+      detail = 'Slicing process finished; model is ready to print';
+      break;
+
+    default:
+      logger.log(logger.WARNING, function () {
+        return `${msg.job_id}: unknown state sent to updateState; state = ${state}`;
+      });
+      state = STATE_ERR;
+      txt = 'Unknown';
+      detail = 'Unknown state';
+      break;
   }
-  else {
+  op = {
+    $set: {
+      slicing: {
+        status: state,
+        jobID: msg.job_id,
+        progress: txt,
+        progressDetail: detail
+      },
+      gcode_file: 'waiting'
+    }
+  };
 
-    // Clear the slicing info
-    op = {
-      $unset: {
-        slicing: '',
-        gcode_file: ''
-      }
-    };
+  if (state === SLICER_DONE) {
+    // Save the gcode file location to the print job document
+    op.$set.gcode_file = msg.gcode_file;
   }
+
 
   logger.log(logger.DEBUG, function() {
     return `${msg.job_id}: Changing state to "${txt}"; ${JSON.stringify(op)}`;
@@ -190,7 +192,7 @@ function updateState(msg, state, err) {
       return Promise.resolve(msg);
     })
     .catch(function(err) {
-      if (err.message === 'CANCELED') {
+      if (err.message === 'CANCELED' || err.message === 'SLICER') {
         // Bump upstairs
         return Promise.reject(err);
       }
@@ -199,7 +201,7 @@ function updateState(msg, state, err) {
         return `${msg.job_id}: Unable to update the print job record; err = ${err.message}`;
       });
       return Promise.resolve(msg);
-    })
+    });
 }
 
 // downloadFiles()
@@ -250,6 +252,12 @@ function spawnSlicer(msg) {
             return `${msg.job_id}: Slicer finished; stdout = "${res.stdout}"`;
           });
           return Promise.resolve(msg);
+        })
+        .catch(function(err) {
+          logger.log(logger.WARNING, function() {
+            return `${msg.job_id}: Slicer failure; error = ${err.message}`;
+          });
+          return Promise.reject(new Error('SLICER'));
         });
     });
 }
@@ -403,6 +411,16 @@ function processMessage(err, msg) {
         });
         requeue = false;
         jobsCanceled += 1;
+        // Cannot readily update the job state -- it's in the completed_jobs collection
+      }
+      else if (err.message === 'SLICER') {
+        // Model will not slice
+        logger.log(logger.INFO, function() {
+          return `${msg.job_id}: Slicing canceled; model fails to slice`;
+        });
+        requeue = false;
+        jobsFailedSlicing += 1;
+        updateState(msg, SLICER_FAIL).then(function() { return null; }).catch(function() { return null; });
       }
       else {
         requeue = true;
@@ -440,6 +458,7 @@ app.get('/stats', function(req, res) {
     {
       jobsSucceeded: jobsSucceeded,
       jobsFailed: jobsFailed,
+      jobsFailedSlicing: jobsFailedSlicing,
       jobsCanceled: jobsCanceled
     },
     queue.stats()));
