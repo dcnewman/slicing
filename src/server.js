@@ -436,7 +436,7 @@ function processMessage(err, msg) {
       else {
         requeue = true;
         jobsFailed += 1;
-        updateState(msg, STATE_ERR, `Processing error; err = ${err.message}`)
+        updateState(msg, STATE_ERR, err)
           .then(function () { return null; })
           .catch(function () { return null; });
       }
