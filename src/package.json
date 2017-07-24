@@ -10,7 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "aws-s3-promisified": "^2.0.0",
     "aws-sdk": "^2.40.0",
     "bluebird": "^3.5.0",
     "child-process-promise": "^2.2.1",
