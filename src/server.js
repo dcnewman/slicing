@@ -95,13 +95,13 @@ mongoose.connect(config.mongo.uri, {safe: true})
     throw new Error('Unable to connect to MongoDB; connection error is ' + err.message);
   });
 
-var SLICER_WAITING  =  0;
-var SLICER_PRE      =  1;
-var SLICER_RUN      =  2;
-var SLICER_POST     =  3;
-var SLICER_DONE     =  4;
-var SLICER_FAIL     = -1;
-var SLICER_ERR      = -2;
+var STATE_WAITING  =  0;
+var STATE_PRE      =  1;
+var STATE_RUN      =  2;
+var STATE_POST     =  3;
+var STATE_DONE     =  4;
+var STATE_FAIL     = -1;
+var STATE_ERR      = -2;
 
 // Update the printer status
 //   TBD
@@ -110,7 +110,7 @@ function updateState(msg, state, err) {
   var detail, txt, op;
 
   switch (state) {
-    case SLICER_WAITING:
+    case STATE_WAITING:
       txt = 'Waiting to Slice';
       detail = 'Waiting in the slicing queue for the model to be sliced';
       break;
@@ -125,22 +125,22 @@ function updateState(msg, state, err) {
       detail = `Error; ${err.message}`;
       break;
 
-    case SLICER_PRE:
+    case STATE_PRE:
       txt = 'Preparing Slicer';
       detail = 'Preparing to slice the model; downloading the STL file and slicing options';
       break;
 
-    case SLICER_RUN:
+    case STATE_RUN:
       txt = 'Slicing';
       detail = 'Slicing the model';
       break;
 
-    case SLICER_POST:
+    case STATE_POST:
       txt = 'Saving sliced model';
       detail = 'Slicing completed; uploading the printing instructions for retrieval by the printer';
       break;
 
-    case SLICER_DONE:
+    case STATE_DONE:
       txt = 'Slicing completed';
       detail = 'Slicing process finished; model is ready to print';
       break;
@@ -166,7 +166,7 @@ function updateState(msg, state, err) {
     }
   };
 
-  if (state === SLICER_DONE) {
+  if (state === STATE_DONE) {
     // Save the gcode file location to the print job document
     op.$set.gcode_file = msg.gcode_file;
   }
@@ -196,7 +196,7 @@ function updateState(msg, state, err) {
         // Bump upstairs
         return Promise.reject(err);
       }
-      // Don't let the inability to update deter us (may be problem if SLICER_DONE state)
+      // Don't let the inability to update deter us (may be problem if STATE_DONE state)
       logger.log(logger.WARNING, function() {
         return `${msg.job_id}: Unable to update the print job record; err = ${err.message}`;
       });
@@ -210,7 +210,7 @@ function updateState(msg, state, err) {
 function downloadFiles(msg) {
 
    // Set state to "preparing slicer"
-  return updateState(msg, SLICER_PRE)
+  return updateState(msg, STATE_PRE)
     .then(function() {
 
       logger.log(logger.DEBUG, function() {
@@ -235,7 +235,7 @@ function downloadFiles(msg) {
 // Spawn the slicer
 function spawnSlicer(msg) {
 
-  return updateState(msg, SLICER_RUN)
+  return updateState(msg, STATE_RUN)
     .then(function() {
       var obj = {
         config: msg.config_local,
@@ -266,7 +266,7 @@ function spawnSlicer(msg) {
 // - Return a promise to upload the gcode file to S3
 function uploadFile(msg) {
 
-  return updateState(msg, SLICER_POST)
+  return updateState(msg, STATE_POST)
     .then(function() {
 
       logger.log(logger.DEBUG, function() {
@@ -294,7 +294,7 @@ function cleanFiles(msg) {
 // Notify our cloud services that the message has been processed; that the STL file has been sliced.
 function notifyDone(msg) {
 
-  return updateState(msg, SLICER_DONE)
+  return updateState(msg, STATE_DONE)
     .then(function() {
 
       // Do not continue to renew visibility
@@ -420,7 +420,7 @@ function processMessage(err, msg) {
         });
         requeue = false;
         jobsFailedSlicing += 1;
-        updateState(msg, SLICER_FAIL).then(function() { return null; }).catch(function() { return null; });
+        updateState(msg, STATE_FAIL).then(function() { return null; }).catch(function() { return null; });
       }
       else {
         requeue = true;
