@@ -111,12 +111,12 @@ function updateState(msg, state, err) {
 
   switch (state) {
     case STATE_WAITING:
-      txt = 'Waiting to Slice';
+      txt = 'Waiting to slice';
       detail = 'Waiting in the slicing queue for the model to be sliced';
       break;
 
     case STATE_FAIL:
-      txt = 'Cannot Slice';
+      txt = 'Cannot slice';
       detail = 'The model cannot be sliced; something is incorrect with the STL file';
       break;
 
@@ -126,7 +126,7 @@ function updateState(msg, state, err) {
       break;
 
     case STATE_PRE:
-      txt = 'Preparing Slicer';
+      txt = 'Preparing slicer';
       detail = 'Preparing to slice the model; downloading the STL file and slicing options';
       break;
 
