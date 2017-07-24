@@ -1,5 +1,7 @@
 'use strict';
 
+var AWS = require('aws-sdk');
+var fs = require('fs');
 var logger = require('./logger');
 var ld = require('lodash');
 
@@ -9,13 +11,50 @@ var workDir = './';
 
 // We wish to have a promisified version of mkdirp()
 var Promise = require('bluebird');
+var stat = Promise.promisify(fs.stat);
 var mkdirp = Promise.promisify(require('mkdirp'));
 
 // And promisified versions of the AWS SDK S3 routines.
 var env = process.env.NODE_ENV || 'development';
 var config = require('../config/' + env);
-var S3 = require('aws-s3-promisified')(config.s3);
 
+var S3 = new AWS.S3(config.s3);
+
+function saveObjectToFile(bucket, key, path) {
+  return new Promise(function(resolve, reject) {
+    var params = {
+      Bucket: bucket,
+      Key: key
+    };
+    var writeStream = fs.createWriteStream(path);
+    S3.getObject(params)
+      .createReadStream()
+      .on('error', function(e) {
+        reject(e);
+      })
+      .pipe(writeStream);
+
+    writeStream
+      .on('finish', function () {
+        resolve(path);
+      })
+      .on('error', function (err) {
+        reject('Writestream to ' + path + ' did not finish successfully: ' + err);
+      });
+  });
+}
+
+function putFile(bucket, key, filepath) {
+
+  return Promise.bind(this)
+    .then(function () {
+      return stat(filepath);
+    })
+    .then(function (fileInfo) {
+      var bodyStream = fs.createReadStream(filepath);
+      return this.putObject(bucket, key, bodyStream, fileInfo.size);
+    });
+}
 
 // Return a Promise to download the S3 object 'key' from the S3
 // bucket 'bucket', storing it in the file 'file'.  If 'file' is
@@ -46,12 +85,12 @@ exports.downloadObject = function(logid, bucket, key, file) {
   var p = path.parse(file);
   if (ld.isEmpty(p.dir)) {
     // Nope... just download to the current working directory
-    return S3.saveObjectToFile(bucket, key, file);
+    return saveObjectToFile(bucket, key, file);
   }
 
   // First ensure that the directory exists, then download
   return mkdirp(p.dir).then(function() {
-    return S3.saveObjectToFile(bucket, key, file);
+    return saveObjectToFile(bucket, key, file);
   });
 };
 
@@ -75,7 +114,7 @@ exports.uploadFile = function(logid, file, bucket, key) {
   }
 
   // Upload the file
-  return S3.putFile(bucket, key, file);
+  return putFile(bucket, key, file);
 };
 
 exports.setWorkDir = function(dir) {
