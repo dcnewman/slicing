@@ -184,7 +184,10 @@ var PrintJobSchemaJSON = {
     status: Number,
     jobID: String,
     progress: String,
-    progressDetail: String
+    progressDetail: String,
+    downloadTime: [ ],
+    uploadTime: [ ],
+    slicingTime: [ ]
   },
 
   data: {
