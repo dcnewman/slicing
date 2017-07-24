@@ -44,6 +44,26 @@ function saveObjectToFile(bucket, key, path) {
   });
 }
 
+function putObject(bucket, key, body, contentLength) {
+  return new Promise(function (resolve, reject) {
+    var params = {
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentLength: contentLength
+    };
+
+    S3.putObject(params, function(error, data) {
+      if (error) {
+        reject(error);
+      }
+      else {
+        resolve(data);
+      }
+    });
+  });
+}
+
 function putFile(bucket, key, filepath) {
 
   return Promise.bind(this)
@@ -52,7 +72,7 @@ function putFile(bucket, key, filepath) {
     })
     .then(function (fileInfo) {
       var bodyStream = fs.createReadStream(filepath);
-      return this.putObject(bucket, key, bodyStream, fileInfo.size);
+      return putObject(bucket, key, bodyStream, fileInfo.size);
     });
 }
 
