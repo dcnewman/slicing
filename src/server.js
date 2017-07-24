@@ -442,7 +442,7 @@ function processMessage(err, msg) {
       }
 
       // Clean up temporary files
-      lib.removeFiles(msg.job_id, [msg.stlFile, msg.configFile, msg.gcodeFile])
+      lib.removeFiles(msg.job_id, [msg.stl_file, msg.config_file, msg.gcode_file])
         .then(function() { return null; })
         .catch(function() { return null; });
 
