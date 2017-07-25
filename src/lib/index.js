@@ -78,11 +78,17 @@ exports.removeFiles = function(logid, files) {
 
   // Handle the single file case
   if (typeof(files) === 'string') {
+    logger.log(logger.DEBUG, function() {
+      return `${logid}: Removing local file ${files}`;
+    });
     return unlink(files);
   }
 
   // At this point, we expect and array....
   if (!Array.isArray(files)) {
+    logger.log(logger.WARNING, function() {
+      return `${logid}: removeFiles() called with invalid arguments`;
+    });
     return Promise.reject(new Error('removeFiles() called with invalid arguments'));
   }
 
