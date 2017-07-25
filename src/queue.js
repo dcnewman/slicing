@@ -53,6 +53,8 @@ exports.trackMessage = function(msg) {
 exports.requeueMessage = function(msg) {
   runningProcessesInc(-1);
   if (!ld.isEmpty(msg) && !ld.isEmpty(msg.handle)) {
+    // If we cease to renew the message it will become visible
+    //   again once its invisibility times out
     delete keepAlive[msg.handle];
   }
 };
@@ -64,7 +66,7 @@ exports.removeMessage = function(msg) {
     delete keepAlive[msg.handle];
     if (queueIndex !== undefined) {
       // eslint-disable-next-line no-unused-vars
-      sqs.deleteMessage(queues[queueIndex], msg.handle, function (err, data) {
+      sqs.deleteMessage(queues[queueIndex], msg.handle, function(err, data) {
         if (err) {
           logger.log(logger.WARNING, function () {
             return `${msg.jobId}: Error removing ${msg.handle} from the SQS queue ${queues[msg.queueIndex]}; err = ${err.message}`;
