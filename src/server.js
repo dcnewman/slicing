@@ -253,6 +253,7 @@ function spawnSlicer(msg) {
         .then(function(res) {
           msg.slicing_time[2] = new Date();
           msg.slicing_time[0] = msg.slicing_time[2] - msg.slicing_time[1];
+          totalSlicingTime += msg.slicing_time[0] / 1000.0;  // convert to seconds
           logger.log(logger.DEBUG, function() {
             return `${msg.job_id}: Slicer finished; stdout = "${res.stdout}"`;
           });
@@ -419,7 +420,6 @@ function processMessage(err, msg) {
         });
         requeue = false;
         jobsCanceled += 1;
-        totalSlicingTime = msg.slicing_time[0] / 1000.0;  // convert to seconds
         // Cannot readily update the job state -- it's in the completed_jobs collection
       }
       else if (err.message === 'SLICER') {
