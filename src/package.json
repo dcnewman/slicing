@@ -19,7 +19,6 @@
     "mkdirp": "^0.5.1",
     "mongoose": "^4.9.3",
     "random-strings": "0.0.1",
-    "shortid": "^2.2.8",
     "string-template": "^1.0.0",
     "winston": "^2.3.1",
     "winston-cloudwatch": "^1.9.0"
