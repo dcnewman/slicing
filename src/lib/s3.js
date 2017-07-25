@@ -35,17 +35,17 @@ function saveObjectToFile(bucket, key, path) {
       .pipe(writeStream);
 
     writeStream
-      .on('finish', function () {
+      .on('finish', function() {
         resolve(path);
       })
-      .on('error', function (err) {
-        reject('Writestream to ' + path + ' did not finish successfully: ' + err);
+      .on('error', function(err) {
+        reject(new Error(`Writestream to ${path} did not finish successfully; ${err.message}`));
       });
   });
 }
 
 function putObject(bucket, key, body, contentLength) {
-  return new Promise(function (resolve, reject) {
+  return new Promise(function(resolve, reject) {
     var params = {
       Bucket: bucket,
       Key: key,
@@ -67,10 +67,10 @@ function putObject(bucket, key, body, contentLength) {
 function putFile(bucket, key, filepath) {
 
   return Promise.bind(this)
-    .then(function () {
+    .then(function() {
       return stat(filepath);
     })
-    .then(function (fileInfo) {
+    .then(function(fileInfo) {
       var bodyStream = fs.createReadStream(filepath);
       return putObject(bucket, key, bodyStream, fileInfo.size);
     });
