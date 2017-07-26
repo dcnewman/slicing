@@ -61,18 +61,23 @@ exports.requeueMessage = function(msg) {
 
 exports.removeMessage = function(msg) {
   runningProcessesInc(-1);
-  if (!ld.isEmpty(msg) && !ld.isEmpty(msg.handle)) {
-    var queueIndex = keepAlive[msg.handle];
-    delete keepAlive[msg.handle];
-    if (queueIndex !== undefined) {
-      // eslint-disable-next-line no-unused-vars
-      sqs.deleteMessage(queues[queueIndex], msg.handle, function(err, data) {
-        if (err) {
-          logger.log(logger.WARNING, function () {
-            return `${msg.jobId}: Error removing ${msg.handle} from the SQS queue ${queues[msg.queueIndex]}; err = ${err.message}`;
-          });
-        }
-      });
+  if (!ld.isEmpty(msg)) {
+    if (!ld.isEmpty(msg.handle)) {
+      var queueIndex = keepAlive[msg.handle];
+      delete keepAlive[msg.handle];
+      if (queueIndex !== undefined) {
+        // eslint-disable-next-line no-unused-vars
+        sqs.deleteMessage(queues[queueIndex], msg.handle, function(err, data) {
+          if (err) {
+            logger.log(logger.WARNING, function () {
+              return `${msg.jobId}: Error removing ${msg.handle} from the SQS queue ${queues[msg.queueIndex]}; err = ${err.message}`;
+            });
+          }
+        });
+      }
+    }
+    else if (msg.queueIndex !== undefined && !ld.isEmpty(msg.handle)) {
+      sqs.deleteMessage(queues[msg.queueIndex], msg.handle, function(err, data) { return null; });
     }
   }
 };
