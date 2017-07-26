@@ -18,15 +18,18 @@ mongoose.Promise = Promise;
 // Our configuration
 var env = process.env.NODE_ENV || 'development';
 var config = require('./config/' + env);
-var bind_port = config.port || 80;
+
+// Interface to bind to for TCP connections
 var bind_addr = config.ip || '0.0.0.0';
+// TCP port to listen on
+var bind_port = config.port || 8080;
 
 // Directory for temp files
 //   Not using /tmp to avoid compromising swap
 var workDir = path.normalize(`${__dirname}/../working`);
 s3.setWorkDir(workDir);
 
-// Process the cura shell command
+// Our cura processing command
 var scriptDir = path.normalize(`${__dirname}/../scripts`);
 var CuraTemplate = StringTemplateCompile(`${scriptDir}/${config.cura_command}`);
 
@@ -88,6 +91,7 @@ mongoose.connect(config.mongo.uri, {safe: true})
     logger.log(logger.NOTICE, 'MongoDB connection established');
     // Begin checking the queues
     queue.checkQueues();
+    // Set up the periodic loop to renew the invisibility of SQS messages we are processing
     queue.renewMessages();
     return null;
   })
@@ -104,7 +108,7 @@ var STATE_DONE     =  4;
 var STATE_FAIL     = -1;
 var STATE_ERR      = -2;
 
-// Update the printer status
+// Update the print job status by updating the print job's mongo db document
 function updateState(msg, state, err) {
 
   var detail, txt, op;
@@ -225,7 +229,7 @@ function downloadFiles(msg) {
           msg.download_time[0] = msg.download_time[2] - msg.download_time[1];
 
           logger.log(logger.DEBUG, function() {
-            return `${msg.job_id}: Finished downloading ${msg.stl_key} to ${msg.stl_local}`;
+            return `${msg.job_id}: Finished downloading ${msg.stl_key} to ${msg.stl_local}; ${msg.download_time[0]} ms`;
           });
 
           // And resolve this promise
@@ -255,7 +259,7 @@ function spawnSlicer(msg) {
           msg.slicing_time[0] = msg.slicing_time[2] - msg.slicing_time[1];
           totalSlicingTime += msg.slicing_time[0] / 1000.0;  // convert to seconds
           logger.log(logger.DEBUG, function() {
-            return `${msg.job_id}: Slicer finished; stdout = "${res.stdout}"`;
+            return `${msg.job_id}: Slicer finished; ${msg.slicing_time[0]} ms; stdout = "${res.stdout}"`;
           });
           return Promise.resolve(msg);
         })
@@ -284,6 +288,9 @@ function uploadFile(msg) {
         .then(function () {
           msg.upload_time[2] = new Date();
           msg.upload_time[0] = msg.upload_time[2] - msg.upload_time[1];
+          logger.log(logger.DEBUG, function() {
+            return `${msg.job_id}: Upload finished; ${msg.upload_time[0]} ms`;
+          });
           return Promise.resolve(msg);
         });
     });
@@ -316,6 +323,7 @@ function notifyDone(msg) {
     });
 }
 
+// Process a received SQS message
 function processMessage(err, msg) {
 
   msg = ld.cloneDeep(msg);
@@ -345,10 +353,10 @@ function processMessage(err, msg) {
 
     // Reject
     return updateState(msg, STATE_ERR, `Programming error; slicing request is missing the required parameter ${mustHave[i]}`)
-      .then(sqs.requeueMessage)
+      .then(queue.removeMessage)
       .catch(function(err) {
         logger.log(logger.WARNING, function() {
-          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${err}`;
+          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to delete the request; ${err}`;
         });
         return null;
       });
@@ -367,10 +375,10 @@ function processMessage(err, msg) {
   catch (e) {
     // Reject
     return updateState(msg, STATE_ERR, `Programming error; invalid data; cannot parse URL; err = ${e.message}`)
-      .then(sqs.requeueMessage)
+      .then(queue.removeMessage)
       .catch(function(e2) {
         logger.log(logger.WARNING, function() {
-          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to requeue the request; ${e2.message}`;
+          return `${msg.job_id}: unable to process slicing request AND an error occurred while attempting to delete the request; ${e2.message}`;
         });
         return null;
       });
