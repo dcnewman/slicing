@@ -4,6 +4,7 @@ var URL = require('url');
 var path = require('path');
 var ld = require('lodash');
 var Promise = require('bluebird');
+var mongoose = require('mongoose');
 var logger = require('./logger');
 var rs = require('random-strings');
 
@@ -122,4 +123,29 @@ exports.removeFiles = function(logid, files) {
   return Promise.all(promises)
     .then(function() { return Promise.resolve(); })
     .catch(function() { return Promise.resolve(); });
+};
+
+function roundHour() {
+  var now = new Date();
+  now.setMilliseconds(0);
+  now.setSeconds(0);
+  now.setMinutes(0);
+  return now;
+}
+
+exports.objectIdFromTimeStamp = function(timestamp) {
+
+  if (!timestamp) {
+    timestamp = roundHour();
+  }
+  else if (typeof(timestamp) === 'string') {
+    // Convert string date to Date object (otherwise assume timestamp is a date)
+    timestamp = new Date(timestamp);
+  }
+
+  // Convert date object to hex seconds since Unix epoch
+  var hex_seconds = Math.floor(timestamp / 1000).toString(16);
+
+  // Create an ObjectId with that hex timestamp
+  return mongoose.Types.ObjectId(hex_seconds + '0000000000000000');
 };

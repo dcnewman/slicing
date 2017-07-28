@@ -416,6 +416,10 @@ function processMessage(err, msg) {
     .then(notifyDone)
     .then(cleanFiles)
     .then(function() {
+      Stats.update(
+        { _id: lib.objectIdFromTimeStamp() },
+        { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0] } },
+        { upsert: true, setDefaultsOnInsert: true }).exec();
       jobsSucceeded += 1;
       return null;
     })
@@ -428,6 +432,10 @@ function processMessage(err, msg) {
         });
         requeue = false;
         jobsCanceled += 1;
+        Stats.update(
+          { _id: lib.objectIdFromTimeStamp() },
+          { $inc: { slicing_canceled: 1 } },
+          { upsert: true, setDefaultsOnInsert: true }).exec();
         // Cannot readily update the job state -- it's in the completed_jobs collection
       }
       else if (err.message === 'SLICER') {
@@ -437,6 +445,10 @@ function processMessage(err, msg) {
         });
         requeue = false;
         jobsFailedSlicing += 1;
+        Stats.update(
+          { _id: lib.objectIdFromTimeStamp() },
+          { $inc: { slicing_failed: 1 } },
+          { upsert: true, setDefaultsOnInsert: true }).exec();
         updateState(msg, STATE_FAIL).then(function() { return null; }).catch(function() { return null; });
       }
       else {
