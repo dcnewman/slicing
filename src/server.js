@@ -1,6 +1,7 @@
 'use strict';
 
 var PrintJob = require('./db_models/printJob.model');
+var Stats = require('./db_models/stats.model');
 var lib = require('./lib');
 var sqs = require('./lib/sqs');
 var logger = require('./lib/logger');
