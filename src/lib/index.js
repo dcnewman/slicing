@@ -1,3 +1,8 @@
+// Copyright (c) 2017, Polar 3D LLC
+// All rights reserved
+//
+// https://polar3d.com/
+
 'use strict';
 
 var URL = require('url');

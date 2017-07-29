@@ -1,3 +1,8 @@
+// Copyright (c) 2017, Polar 3D LLC
+// All rights reserved
+//
+// https://polar3d.com/
+
 'use strict';
 
 var PrintJob = require('./db_models/printJob.model');
@@ -212,7 +217,7 @@ function updateState(msg, state, err) {
 //  - Return a promise to download the STL and slicer configuration files
 function downloadFiles(msg) {
 
-   // Set state to "preparing slicer"
+  // Set state to "preparing slicer"
   return updateState(msg, STATE_PRE)
     .then(function() {
 
@@ -223,7 +228,7 @@ function downloadFiles(msg) {
       // Now download the STL and slicer configuration files
       msg.download_time[1] = new Date();
       return Promise.join(s3.downloadObject(msg.job_id, msg.stl_bucket, msg.stl_key, msg.stl_local),
-                          s3.downloadObject(msg.job_id, msg.config_bucket, msg.config_key, msg.config_local))
+        s3.downloadObject(msg.job_id, msg.config_bucket, msg.config_key, msg.config_local))
         .then(function() {
 
           msg.download_time[2] = new Date();
@@ -420,7 +425,14 @@ function processMessage(err, msg) {
       Stats.update(
         { _id: lib.objectIdFromTimeStamp() },
         { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0] } },
-        { upsert: true, setDefaultsOnInsert: true }).exec();
+        { upsert: true, setDefaultsOnInsert: true }).exec()
+        .then(function() { return null; })
+        .catch(function(err) {
+          logger.log(logger.WARNING, function() {
+            return `${msg.job.id}: Failed to update slicing stats; ${err.message}`;
+          });
+          return null;
+        });
       jobsSucceeded += 1;
       return null;
     })
@@ -436,7 +448,14 @@ function processMessage(err, msg) {
         Stats.update(
           { _id: lib.objectIdFromTimeStamp() },
           { $inc: { slicing_canceled: 1 } },
-          { upsert: true, setDefaultsOnInsert: true }).exec();
+          { upsert: true, setDefaultsOnInsert: true }).exec()
+          .then(function() { return null; })
+          .catch(function(err) {
+            logger.log(logger.WARNING, function() {
+              return `${msg.job.id}: Failed to update slicing stats; ${err.message}`;
+            });
+            return null;
+          });
         // Cannot readily update the job state -- it's in the completed_jobs collection
       }
       else if (err.message === 'SLICER') {
@@ -449,7 +468,14 @@ function processMessage(err, msg) {
         Stats.update(
           { _id: lib.objectIdFromTimeStamp() },
           { $inc: { slicing_failed: 1 } },
-          { upsert: true, setDefaultsOnInsert: true }).exec();
+          { upsert: true, setDefaultsOnInsert: true }).exec()
+          .then(function() { return null; })
+          .catch(function(err) {
+            logger.log(logger.WARNING, function() {
+              return `${msg.job.id}: Failed to update slicing stats; ${err.message}`;
+            });
+            return null;
+          });
         updateState(msg, STATE_FAIL).then(function() { return null; }).catch(function() { return null; });
       }
       else {
