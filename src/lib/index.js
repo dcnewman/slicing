@@ -138,6 +138,8 @@ function roundHour() {
   return now;
 }
 
+exports.objectIdTimeZero = mongoose.Types.ObjectId('000000000000000000000000');
+
 exports.objectIdFromTimeStamp = function(timestamp) {
 
   if (!timestamp) {
