@@ -422,8 +422,21 @@ function processMessage(err, msg) {
     .then(notifyDone)
     .then(cleanFiles)
     .then(function() {
+      // Hourly stats
       Stats.update(
         { _id: lib.objectIdFromTimeStamp() },
+        { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0] } },
+        { upsert: true, setDefaultsOnInsert: true }).exec()
+        .then(function() { return null; })
+        .catch(function(err) {
+          logger.log(logger.WARNING, function() {
+            return `${msg.job.id}: Failed to update slicing stats; ${err.message}`;
+          });
+          return null;
+        });
+      // Lifetime stats
+      Stats.update(
+        { _id: lib.objectIdTimeZero },
         { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0] } },
         { upsert: true, setDefaultsOnInsert: true }).exec()
         .then(function() { return null; })
