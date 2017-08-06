@@ -51,8 +51,8 @@ var exec = require('child-process-promise').exec;
 var queue = require('./queue');
 queue.setCallback(processMessage);
 var queue_prefix = `https://sqs.${config.sqs.awsOptions.region}.amazonaws.com/${config.sqs.account}/`;
-queue.setQueueHighPriority(queue_prefix + 'us-west-slicing-high-prio');
-queue.setQueueLowPriority(queue_prefix + 'us-west-slicing-low-prio');
+queue.setQueueHighPriority(queue_prefix + config.sqs_slicing.queue_high);
+queue.setQueueLowPriority(queue_prefix + config.sqs_slicing.queue_low);
 
 // Stats
 var jobsSucceeded = 0;
