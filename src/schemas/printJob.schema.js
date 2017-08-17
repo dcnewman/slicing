@@ -202,12 +202,12 @@ var PrintJobSchemaJSON = {
 
     progress: {
       type: String,
-      maxlength: 32
+      maxlength: 100
     },
 
     progressDetail: {
       type: String,
-      maxlength: 128
+      maxlength: 200
     },
 
     estimatedTime: {
@@ -234,7 +234,7 @@ var PrintJobSchemaJSON = {
 
     fileSize: {
       type: Number,
-      min: 0,
+      min: 0
     },
 
     temperature: Number,
@@ -252,12 +252,12 @@ var PrintJobSchemaJSON = {
 
     file: {
       type: String,
-      maxlength: 100
+      maxlength: 200
     },
 
     config: {
       type: String,
-      maxlength: 100
+      maxlength: 200
     },
 
     securityCode: {
