@@ -304,7 +304,12 @@ var PrintJobSchemaJSON = {
   stl_file: String,
   json_file: String,
   config_file: String,
-  gcode_file: String
+  gcode_file: String,
+
+  gcode_only: {
+    type: Boolean,
+    default: false
+  }
 
 };
 
