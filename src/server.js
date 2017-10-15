@@ -321,7 +321,7 @@ function notifyDone(msg) {
       queue.removeMessage(msg);
 
       logger.log(logger.INFO, function() {
-        return `${msg.job_id}: Sliced!`;
+        return `${msg.job_id}: Sliced in ${msg.slicing_time[0]/1000.0} seconds!`;
       });
 
       // And move on
@@ -425,7 +425,7 @@ function processMessage(err, msg) {
       // Hourly stats
       Stats.update(
         { _id: lib.objectIdFromTimeStamp() },
-        { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0]/100.0 } },
+        { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0]/1000.0 } },
         { upsert: true, setDefaultsOnInsert: true }).exec()
         .then(function() { return null; })
         .catch(function(err) {
@@ -437,7 +437,7 @@ function processMessage(err, msg) {
       // Lifetime stats
       Stats.update(
         { _id: lib.objectIdTimeZero },
-        { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0]/100.0 } },
+        { $inc: { slicing_succeeded: 1, slicing_seconds: msg.slicing_time[0]/1000.0 } },
         { upsert: true, setDefaultsOnInsert: true }).exec()
         .then(function() { return null; })
         .catch(function(err) {
