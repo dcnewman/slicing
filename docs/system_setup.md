@@ -5,13 +5,6 @@ Notes for setting up a Slicing Server.
 ### Login to the AWS EC2 instance
 
 Log in to the AWS EC2 instance where you wish to build the container.
-For example, if the instance uses the cloud20-dev ssh certs, use the
-ssh command
-
-	ssh -i ~/.ssh/cloud20-dev.pem ec2-user@54.186.62.228
-
-Note that the cloud20-dev.pem file may be found in Dan's shared Google
-drive `secrets` folder.
 
 ### Update the AWS EC2 instance
 
@@ -182,17 +175,23 @@ And then build
 
 ### Set up `src/config/`
 
-Get the `slicing.src.config.zip` file from Dan's `secrets/` folder in
-Google drive,
+Set up a production.js or development.js config file.  Use
+`src/config/development.sample.js` as a starting point.
 
-	cd slicing/src
-	unzip slicing.src.config.zip
-	mv config/start_server.sh ../start_server.sh
+To select which to use when running, set the `NODE_ENV`
+environment variable.  E.g.,
 
+    NODE_ENV=production node server.js
+
+will start the server running using `production.js` from `src/config`.
 
 ### Running the Slicing Server
 
+Modify `start_server.sample.sh` as you see fit, rename it to
+`start_server.sh`, and run it
+
     cd slicing
+	chmod a+x ./start_server.sh
 	sudo ./start_server.sh
 
 The `start_server.sh` script can also be used to restart the server.
