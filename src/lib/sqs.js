@@ -123,11 +123,15 @@ exports.receiveMessages = function(queue, queueIndex, askFor, cb) {
         }
         catch (e) {
           // Skip this one
+          logger.log(logger.WARNING, `Cannot parse ${messages[i].Body}`);
           continue;
         }
-        cb(null, ld.assign({
-          handle: messages[i].ReceiptHandle,
-          queueIndex: queueIndex}, data));
+        logger.log(logger.DEBUG, function() { return `Queuing ${JSON.stringify(data2)}`; });
+        var data2 = new Object();
+        data2.handle = messages[i].ReceiptHandle;
+        data2.queueIndex = queueIndex;
+        ld.assign(data2, data);
+        cb(null, data2);
         used += 1;
       }
 
