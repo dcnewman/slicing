@@ -99,7 +99,7 @@ var PrintJobSchemaJSON = {
   serial_number: {
     type: String,
     minlength: 1,
-    maxlength: 32,
+    maxlength: 64,
     uppercase: true,
     index: true
   },
@@ -107,7 +107,7 @@ var PrintJobSchemaJSON = {
   pool_number: {
     type: String,
     minlength: 1,
-    maxlength: 32,
+    maxlength: 64,
     uppercase: true,
     required: true,
     index: true
