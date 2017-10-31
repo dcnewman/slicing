@@ -277,6 +277,8 @@ var PrintJobSchemaJSON = {
 
     targetTemperature_chamber: Number,
 
+    door: Number,
+
     jobID: {
       type: String,
       maxlength: 64
