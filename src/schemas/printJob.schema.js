@@ -343,7 +343,19 @@ var PrintJobSchemaJSON = {
   gcode_only: {
     type: Boolean,
     default: false
-  }
+  },
+
+  // JSON data converted to string: opaque to backend; parsed by frontend
+  request: String,
+
+  // Remarks about a completed/canceled print (used by completed jobs)
+  remarks: [ {
+    remark: String,
+    user_id: Schema.Types.ObjectId,
+    user_display_name: String,
+    user_photo_url: String,
+    user_photo_thumbnail_url: String
+  } ]
 
 };
 
