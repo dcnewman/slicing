@@ -76,7 +76,11 @@ var PrintJobSchemaJSON = {
     index: true
   },
 
-  owner_name: String,
+  owner_name: String,  // display name
+  owner_phone: String,
+  owner_email: String,
+  owner_first_name: String,
+  owner_last_name: String,
   owner_photo_url: String,
   owner_photo_thumbnail_url: String,
 
