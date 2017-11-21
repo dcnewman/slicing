@@ -1,8 +1,24 @@
+## Polar Cloud Slicing Server
+
 This project implements Polar 3D's cloud slicing server using
 [Node.js](https://nodejs.org) as the programming language with
 additional [NPM modules](https://www.npmjs.com/) as detailed
 in the [`package.json`](https://docs.npmjs.com/files/package.json)
 file.
+
+The server scales horizontally with no special considerations: run
+as few or as many as needed.  No special configuration is needed
+to run any number of servers.  The servers do not communicate with
+one another and instead receive their slicing requests from a
+message queue which ensures that a given message is only handed
+out to a single server, thereby preventing multiple servers from
+simultaneously processing the same request.  It is okay to shoot
+a server dead in its tracks; slicing requests will not be lost.
+
+To vertically scale, change the number of slicing jobs a single server
+can handle concurrently.
+
+## Dependencies
 
 This slicing server is written to run in an Amazon AWS infrastructure
 from which it uses
