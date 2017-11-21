@@ -10,8 +10,8 @@ from which it uses
 * [Amazon S3](https://aws.amazon.com/s3/) for file storage, both
  input files for slicing as well as the slicer output.
 * [Amazon SQS](https://aws.amazon.com/sqs/) for a message queue whereby
- the other cloud servers can initiate a slicing request for a
- print job queued to a printer.
+ cloud servers can initiate a slicing request for a print job queued
+ to a printer.
 * [Amazon CloudWatch](https://aws.amazon.com/cloudwatch/) as a
  logging service.
 
@@ -22,7 +22,7 @@ access layer.  Finally,
 as the slicer, but with a single code change to better handle error
 conditions relating STL input files.
 
-Each those choices can be changed as needed:
+Each of those choices can be changed as needed:
 
 * Amazon S3: Either use an equivalent file storage mechanism which
   implements S3 compatability or replace the `src/lib/s3.js` routines.
@@ -38,16 +38,17 @@ Each those choices can be changed as needed:
   logging services.  As with SQS, use CloudWatch as it is effectively
   free to use for our level of usage.  Avoid logging to local disks
   as it makes management more difficult when horizontally scaling.
-  Also, it is data you have to consider recovering before shooting
-  a server instance dead.
-* Mongo DB: This particular database is used because it is what the
+  Also, it locally stored data becomes data you have to consider
+  recovering before shooting a server instance dead.  It's best to
+  not store anything but transient data.
+* Mongo DB: This particular database is what the
   Polar Cloud uses.  The slicing server only accesses -- write-only --
   two collections (tables) in the database.  One to record slicing
-  stats and the other to allow other cloud servers to monitor the
+  stats, and the other to allow other cloud servers to monitor the
   slicing progress for each print job.  Use of the database is
   not critical.
 * CuraEngine: Any slicer might be used provided it can be run
-  from another process.  This server presently assumes that the
+  as a stand-alone process.  This server presently assumes that the
   input to the slicer is an STL file and a configuration file.
   Further that the slicer can be invoked from a shell script and
   is well-behaved so far as it exits with a status of zero upon
@@ -58,10 +59,10 @@ Each those choices can be changed as needed:
 When launched, the server
 
 1. Enables logging to the desired logging service.
-2. Connects to the configured Mongo DB.  Failure to connect
+2. Connects to the configured Mongo DB server.  Failure to connect
    is treated as critical error.
 3. Connects to the SQS queues, creating them if necessary.
-4. Enters the event loop, waiting for slicing requests to process.
+4. Enters an event loop, waiting for slicing requests to process.
 
 ## SQS queues
 
@@ -106,10 +107,10 @@ The slicing server relies on two SQS "features":
    slicing server be shut down or unexpectedly die.
 
 As regards Item 2 above, the SQS queues are configured to hide
-read messages for one minute.  When a slicing server reads a
-message from the queues, it periodically refreshes each message's
-hidden state, deleting them from the queues once the associated
-job has been processed.
+read messages for one minute.  When a slicing server reads
+messages from the queues, it periodically refreshes each message's
+hidden state, deleting each one from the queues once the associated
+jobs have been processed.
 
 ## Processing
 
