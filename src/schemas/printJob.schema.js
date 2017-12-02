@@ -337,7 +337,8 @@ var PrintJobSchemaJSON = {
     required: true
   },
 
-  photo_url: String,
+  photo_url: String,            // rendering
+  photo_thumbnail_url: String,  // rendering
 
   // For historical reasons, these do not use '_url' in their names
   stl_file: String,
