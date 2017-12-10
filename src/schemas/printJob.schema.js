@@ -223,8 +223,6 @@ var PrintJobSchemaJSON = {
 
     status: {
       type: Number,
-      min: 0,
-      max: 11,
       required: true,
       default: 0
     },
