@@ -184,6 +184,11 @@ var PrintJobSchemaJSON = {
     default: 1,
     required: true
   },
+  
+  camera_off: {
+    type: Boolean,
+    default: false
+  },
 
   // Whether or not the image needs to be rotated 180 degrees
   rotate_image: {
