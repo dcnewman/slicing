@@ -55,7 +55,7 @@ function saveObjectToFile(bucket, key, path) {
       Bucket: bucket,
       Key: key
     };
-    var writeStream = fs.createWriteStream(path);
+    var writeStream = fs.createWriteStream(path, {mode: 0o660});
     S3.getObject(params)
       .createReadStream()
       .on('error', function(e) {
